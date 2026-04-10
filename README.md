@@ -9,32 +9,36 @@ A web-based antenna design and simulation tool using the Method of Moments (MoM)
 
 ## Quick Start
 
-### Backend
+The simplest way to start both backend and frontend together:
 
 ```bash
-cd backend
-go run ./cmd/server
+cd frontend && npm install && cd ..
+make run
 ```
 
-The API server starts on `http://localhost:8080`.
+This launches both processes, prefixing output with `[backend]` and `[frontend]`.
 
-To change the port:
+- **Ctrl+C** — restart both processes
+- **Ctrl+C x2** (within 2s) — shut down
+
+### Launcher options
 
 ```bash
-PORT=9090 go run ./cmd/server
+cd backend && go run ./cmd/launcher \
+  -port 9090 \
+  -frontend-port 3000 \
+  -cors "http://localhost:3000"
 ```
 
-### Frontend
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-port` | 8080 | Backend API port |
+| `-frontend-port` | 5173 | Vite dev server port |
+| `-cors` | `http://localhost:<frontend-port>` | CORS allowed origins |
+| `-backend-dir` | auto-detected | Path to `backend/` |
+| `-frontend-dir` | auto-detected | Path to `frontend/` |
 
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-The dev server starts on `http://localhost:5173` and proxies `/api` requests to the backend.
-
-### Both at once (two terminals)
+### Running separately (two terminals)
 
 ```bash
 # Terminal 1
@@ -43,6 +47,18 @@ make dev-backend
 # Terminal 2
 make dev-frontend
 ```
+
+Or manually:
+
+```bash
+# Backend (terminal 1)
+cd backend && go run ./cmd/server
+
+# Frontend (terminal 2)
+cd frontend && npm run dev
+```
+
+The backend serves on `http://localhost:8080`. The frontend dev server on `http://localhost:5173` proxies `/api` to the backend.
 
 ## Production Build
 

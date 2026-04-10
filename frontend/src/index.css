@@ -156,11 +156,21 @@ body {
   overflow: hidden;
 }
 
-.resize-handle {
+.panel-divider {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  z-index: 10;
   width: 5px;
   cursor: col-resize;
+}
+
+.resize-handle {
+  position: absolute;
+  inset: 0;
   background: var(--border);
-  flex-shrink: 0;
   transition: background 0.15s;
 }
 
@@ -170,16 +180,13 @@ body {
 
 .panel-toggle-btn {
   position: absolute;
-  left: 0;
   top: 50%;
-  transform: translateY(-50%);
-  z-index: 20;
+  left: 50%;
+  transform: translate(-50%, -50%);
   width: 20px;
   height: 48px;
   background: var(--bg-secondary);
   border: 1px solid var(--border);
-  border-left: none;
-  border-radius: 0 6px 6px 0;
   color: var(--text-secondary);
   font-size: 12px;
   cursor: pointer;
@@ -188,6 +195,7 @@ body {
   justify-content: center;
   padding: 0;
   transition: background 0.15s, color 0.15s;
+  border-radius: 4px;
 }
 
 .panel-toggle-btn:hover {
@@ -195,16 +203,10 @@ body {
   color: #fff;
 }
 
-/* Position the toggle relative to the left panel edge */
 .main-layout {
   display: flex;
   flex: 1;
   overflow: hidden;
-  position: relative;
-}
-
-.main-layout .panel-toggle-btn {
-  /* Dynamically positioned via the left-panel width; CSS fallback */
 }
 
 .panel-scroll {

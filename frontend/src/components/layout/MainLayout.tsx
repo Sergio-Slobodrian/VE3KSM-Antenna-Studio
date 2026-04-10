@@ -92,16 +92,18 @@ const MainLayout: React.FC = () => {
           </div>
         </div>
       )}
-      {!collapsed && (
-        <div className="resize-handle" onMouseDown={onMouseDown} />
-      )}
-      <button
-        className="panel-toggle-btn"
-        onClick={toggleCollapsed}
-        title={collapsed ? 'Show input panel' : 'Hide input panel'}
-      >
-        {collapsed ? '\u25B6' : '\u25C0'}
-      </button>
+      <div className="panel-divider">
+        {!collapsed && (
+          <div className="resize-handle" onMouseDown={onMouseDown} />
+        )}
+        <button
+          className="panel-toggle-btn"
+          onClick={toggleCollapsed}
+          title={collapsed ? 'Show input panel' : 'Hide input panel'}
+        >
+          {collapsed ? '\u25B6' : '\u25C0'}
+        </button>
+      </div>
       <div className="right-panel">
         <div className="tab-bar">
           {tabs.map((tab) => (

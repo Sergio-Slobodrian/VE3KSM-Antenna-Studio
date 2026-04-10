@@ -174,28 +174,31 @@ func killAll(procs []*process) {
 	time.Sleep(500 * time.Millisecond)
 }
 
-// detectRoot finds the project root by looking for backend/ and frontend/ dirs
+// detectRoot finds the project root by looking for backend/ and frontend/ dirs.
+// Walks up from cwd and from the executable location to find the root.
 func detectRoot() string {
-	// Try cwd first
+	candidates := []string{}
+
 	cwd, _ := os.Getwd()
-	if hasSubdirs(cwd) {
-		return cwd
-	}
-	// Try the directory containing the executable
+	candidates = append(candidates, cwd)
+
 	exe, _ := os.Executable()
 	exeDir := filepath.Dir(exe)
-	if hasSubdirs(exeDir) {
-		return exeDir
+	candidates = append(candidates, exeDir)
+
+	// Walk up to 4 levels from each starting point
+	for _, start := range []string{cwd, exeDir} {
+		dir := start
+		for range 4 {
+			dir = filepath.Dir(dir)
+			candidates = append(candidates, dir)
+		}
 	}
-	// Try parent of exe dir (in case binary is in cmd/launcher or bin/)
-	parent := filepath.Dir(exeDir)
-	if hasSubdirs(parent) {
-		return parent
-	}
-	// Try grandparent (binary in backend/cmd/launcher)
-	grandparent := filepath.Dir(parent)
-	if hasSubdirs(grandparent) {
-		return grandparent
+
+	for _, dir := range candidates {
+		if hasSubdirs(dir) {
+			return dir
+		}
 	}
 	return cwd
 }

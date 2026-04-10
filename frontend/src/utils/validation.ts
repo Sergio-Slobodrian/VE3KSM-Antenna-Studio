@@ -1,0 +1,46 @@
+import type { Wire, FrequencyConfig } from '@/types';
+
+export function validateWire(wire: Wire): string | null {
+  if (
+    wire.x1 === wire.x2 &&
+    wire.y1 === wire.y2 &&
+    wire.z1 === wire.z2
+  ) {
+    return 'Wire endpoints cannot be identical (zero length)';
+  }
+  if (wire.radius <= 0) {
+    return 'Wire radius must be positive';
+  }
+  if (wire.segments < 1 || !Number.isInteger(wire.segments)) {
+    return 'Segments must be a positive integer';
+  }
+  if (wire.radius > 1) {
+    return 'Wire radius seems too large (> 1 m)';
+  }
+  return null;
+}
+
+export function validateFrequency(freq: FrequencyConfig): string | null {
+  if (freq.mode === 'single') {
+    if (freq.frequencyMhz <= 0) {
+      return 'Frequency must be positive';
+    }
+    if (freq.frequencyMhz > 100000) {
+      return 'Frequency exceeds 100 GHz';
+    }
+  } else {
+    if (freq.freqStart <= 0 || freq.freqEnd <= 0) {
+      return 'Start and end frequencies must be positive';
+    }
+    if (freq.freqStart >= freq.freqEnd) {
+      return 'Start frequency must be less than end frequency';
+    }
+    if (freq.freqSteps < 2) {
+      return 'At least 2 sweep steps are required';
+    }
+    if (freq.freqSteps > 1000) {
+      return 'Maximum 1000 sweep steps';
+    }
+  }
+  return null;
+}

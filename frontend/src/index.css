@@ -1,0 +1,493 @@
+/* ========== Reset & Base ========== */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg-primary: #1a1a2e;
+  --bg-secondary: #16213e;
+  --bg-panel: #1e1e3a;
+  --bg-input: #252550;
+  --bg-hover: #2a2a4e;
+  --border: #333366;
+  --text-primary: #e0e0e8;
+  --text-secondary: #a0a0b8;
+  --text-muted: #707088;
+  --accent: #4488ff;
+  --accent-hover: #5599ff;
+  --accent-secondary: #44ccaa;
+  --danger: #ee4444;
+  --danger-hover: #ff5555;
+  --warning: #ffaa44;
+  --success: #44cc66;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial,
+    sans-serif;
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+/* ========== App Layout ========== */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* ========== Header ========== */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.5px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* ========== Buttons ========== */
+.btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background-color 0.15s, opacity 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-secondary {
+  background: #555577;
+  color: #fff;
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: #6666888;
+}
+
+.btn-small {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-danger:hover {
+  background: var(--danger-hover);
+}
+
+/* ========== Spinner ========== */
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ========== Main Layout ========== */
+.main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.left-panel {
+  width: 350px;
+  min-width: 300px;
+  border-right: 1px solid var(--border);
+  background: var(--bg-panel);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.panel-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.panel-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.panel-scroll::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ========== Tabs ========== */
+.tab-bar {
+  display: flex;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.tab-btn {
+  padding: 8px 16px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.tab-content {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+/* ========== Status Bar ========== */
+.status-bar {
+  padding: 6px 16px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.status-error {
+  color: var(--danger);
+}
+
+.status-running {
+  color: var(--warning);
+}
+
+.status-result {
+  color: var(--success);
+}
+
+.status-idle {
+  color: var(--text-muted);
+}
+
+/* ========== Config Sections ========== */
+.config-section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.config-section h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.config-row > label {
+  min-width: 90px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+/* ========== Inputs ========== */
+input[type='number'],
+select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-primary);
+  padding: 4px 6px;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input[type='number']:focus,
+select:focus {
+  border-color: var(--accent);
+}
+
+input[type='number'] {
+  width: 80px;
+}
+
+select {
+  min-width: 120px;
+}
+
+/* ========== Numeric Input Component ========== */
+.numeric-input {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.numeric-input-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* ========== Toggle Group ========== */
+.toggle-group {
+  display: flex;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.toggle-btn {
+  padding: 4px 12px;
+  background: var(--bg-input);
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.toggle-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.toggle-btn.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.toggle-btn:hover:not(.active) {
+  background: var(--bg-hover);
+}
+
+/* ========== Wire Table ========== */
+.wire-table-container h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+}
+
+.wire-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.wire-table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  padding: 4px 2px;
+  text-align: center;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.wire-table td {
+  padding: 2px 1px;
+  text-align: center;
+}
+
+.wire-row {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.wire-row:hover {
+  background: var(--bg-hover);
+}
+
+.wire-row-selected {
+  background: rgba(68, 136, 255, 0.15);
+}
+
+.wire-input {
+  width: 58px !important;
+  text-align: center;
+  padding: 2px 3px !important;
+  font-size: 11px !important;
+}
+
+/* ========== Template Selector ========== */
+.template-selector {
+  min-width: 150px;
+}
+
+/* ========== Editor Container (3D) ========== */
+.editor-container {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+}
+
+.editor-container canvas {
+  display: block;
+}
+
+/* ========== Charts ========== */
+.chart-container {
+  padding: 16px;
+}
+
+.chart-container h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+/* ========== No Data Message ========== */
+.no-data-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 300px;
+  color: var(--text-muted);
+  text-align: center;
+  gap: 8px;
+}
+
+.no-data-message p:first-child {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* ========== Color Scale ========== */
+.color-scale {
+  background: rgba(26, 26, 46, 0.85);
+  padding: 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+}
+
+.color-scale-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+  text-align: center;
+}
+
+/* ========== Recharts overrides ========== */
+.recharts-default-tooltip {
+  border-radius: 4px !important;
+}
+
+.recharts-legend-item-text {
+  color: var(--text-secondary) !important;
+  font-size: 12px !important;
+}
+
+/* ========== Scrollbar ========== */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444466;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555577;
+}

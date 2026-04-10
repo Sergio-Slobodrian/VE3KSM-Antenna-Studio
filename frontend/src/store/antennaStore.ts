@@ -7,6 +7,7 @@ import type {
   FrequencyConfig,
   SimulationResult,
   SweepResult,
+  DisplayUnit,
 } from '@/types';
 
 interface AntennaState {
@@ -17,9 +18,11 @@ interface AntennaState {
   simulationResult: SimulationResult | null;
   sweepResult: SweepResult | null;
   selectedWireId: string | null;
+  displayUnit: DisplayUnit;
   isSimulating: boolean;
   error: string | null;
 
+  setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
   removeWire: (id: string) => void;
@@ -74,6 +77,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   simulationResult: null,
   sweepResult: null,
   selectedWireId: defaultWireId,
+  displayUnit: 'meters' as DisplayUnit,
   isSimulating: false,
   error: null,
 
@@ -117,6 +121,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     set((state) => ({ frequency: { ...state.frequency, ...freq } })),
 
   selectWire: (id) => set({ selectedWireId: id }),
+  setDisplayUnit: (unit) => set({ displayUnit: unit }),
 
   loadTemplate: (data) =>
     set({

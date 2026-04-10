@@ -56,6 +56,25 @@ export interface SweepResult {
   impedance: { r: number; x: number }[];
 }
 
+export type DisplayUnit = 'meters' | 'feet' | 'inches' | 'cm' | 'mm';
+
+export const UNIT_LABELS: Record<DisplayUnit, string> = {
+  meters: 'm',
+  feet: 'ft',
+  inches: 'in',
+  cm: 'cm',
+  mm: 'mm',
+};
+
+/** Multiply meters by this factor to get the display unit. */
+export const METERS_TO_UNIT: Record<DisplayUnit, number> = {
+  meters: 1,
+  feet: 3.28084,
+  inches: 39.3701,
+  cm: 100,
+  mm: 1000,
+};
+
 export interface Template {
   name: string;
   description: string;

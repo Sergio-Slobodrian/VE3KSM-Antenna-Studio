@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { useAntennaStore } from '@/store/antennaStore';
+import { physicsToThree } from '@/utils/conversions';
 import type { Wire } from '@/types';
 
 interface WireMeshProps {
@@ -15,16 +16,18 @@ const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick }) => {
   const meshRef = useRef<THREE.Mesh>(null);
 
   const { position, quaternion, length } = useMemo(() => {
-    const start = new THREE.Vector3(wire.x1, wire.y1, wire.z1);
-    const end = new THREE.Vector3(wire.x2, wire.y2, wire.z2);
+    const s = physicsToThree(wire.x1, wire.y1, wire.z1);
+    const e = physicsToThree(wire.x2, wire.y2, wire.z2);
+    const start = new THREE.Vector3(...s);
+    const end = new THREE.Vector3(...e);
     const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
     const dir = new THREE.Vector3().subVectors(end, start);
     const len = dir.length();
     dir.normalize();
 
     const quat = new THREE.Quaternion();
-    const up = new THREE.Vector3(0, 1, 0);
-    quat.setFromUnitVectors(up, dir);
+    const cylAxis = new THREE.Vector3(0, 1, 0);
+    quat.setFromUnitVectors(cylAxis, dir);
 
     return { position: mid, quaternion: quat, length: len };
   }, [wire.x1, wire.y1, wire.z1, wire.x2, wire.y2, wire.z2]);
@@ -49,11 +52,11 @@ const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick }) => {
         />
       </mesh>
       {/* Endpoint spheres */}
-      <mesh position={[wire.x1, wire.y1, wire.z1]}>
+      <mesh position={physicsToThree(wire.x1, wire.y1, wire.z1)}>
         <sphereGeometry args={[displayRadius * 1.5, 8, 8]} />
         <meshStandardMaterial color={isSelected ? '#ffaa00' : '#66aaff'} />
       </mesh>
-      <mesh position={[wire.x2, wire.y2, wire.z2]}>
+      <mesh position={physicsToThree(wire.x2, wire.y2, wire.z2)}>
         <sphereGeometry args={[displayRadius * 1.5, 8, 8]} />
         <meshStandardMaterial color={isSelected ? '#ffaa00' : '#66aaff'} />
       </mesh>
@@ -90,28 +93,19 @@ const SceneContent: React.FC = () => {
         />
       ))}
 
-      {/* Axis labels using Line for reference */}
+      {/* Axis lines: X (red), Y (green, into screen), Z (blue, up) */}
       <Line
-        points={[
-          [0, 0, 0],
-          [6, 0, 0],
-        ]}
+        points={[[0, 0, 0], [6, 0, 0]]}
         color="#ff4444"
         lineWidth={1}
       />
       <Line
-        points={[
-          [0, 0, 0],
-          [0, 6, 0],
-        ]}
+        points={[[0, 0, 0], [0, 0, 6]]}
         color="#44ff44"
         lineWidth={1}
       />
       <Line
-        points={[
-          [0, 0, 0],
-          [0, 0, 6],
-        ]}
+        points={[[0, 0, 0], [0, 6, 0]]}
         color="#4444ff"
         lineWidth={1}
       />

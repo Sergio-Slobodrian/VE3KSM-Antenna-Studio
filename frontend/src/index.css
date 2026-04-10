@@ -146,20 +146,65 @@ body {
 }
 
 /* ========== Main Layout ========== */
-.main-layout {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
 
 .left-panel {
-  width: 350px;
-  min-width: 300px;
   border-right: 1px solid var(--border);
   background: var(--bg-panel);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.resize-handle {
+  width: 5px;
+  cursor: col-resize;
+  background: var(--border);
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.resize-handle:hover {
+  background: var(--accent);
+}
+
+.panel-toggle-btn {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  width: 20px;
+  height: 48px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: background 0.15s, color 0.15s;
+}
+
+.panel-toggle-btn:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Position the toggle relative to the left panel edge */
+.main-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.main-layout .panel-toggle-btn {
+  /* Dynamically positioned via the left-panel width; CSS fallback */
 }
 
 .panel-scroll {
@@ -344,6 +389,39 @@ select {
 }
 
 /* ========== Wire Table ========== */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.section-header h3 {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0;
+}
+
+.unit-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.unit-selector select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
 .wire-table-container h3 {
   font-size: 13px;
   font-weight: 600;

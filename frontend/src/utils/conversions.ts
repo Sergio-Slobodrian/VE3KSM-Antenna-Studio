@@ -1,3 +1,10 @@
+/**
+ * Convert physics spherical coordinates to Three.js Cartesian coordinates.
+ *
+ * Physics convention: theta from +Z (zenith), phi in XY ground plane.
+ * Three.js convention: Y is up. So we swap Y↔Z:
+ *   three_x = physics_x, three_y = physics_z (up), three_z = physics_y
+ */
 export function sphericalToCartesian(
   r: number,
   thetaDeg: number,
@@ -5,11 +12,20 @@ export function sphericalToCartesian(
 ): { x: number; y: number; z: number } {
   const thetaRad = (thetaDeg * Math.PI) / 180;
   const phiRad = (phiDeg * Math.PI) / 180;
+  // Physics: x = r sinθ cosφ, y = r sinθ sinφ, z = r cosθ
+  // Three.js (Y-up): swap y↔z
   return {
     x: r * Math.sin(thetaRad) * Math.cos(phiRad),
-    y: r * Math.sin(thetaRad) * Math.sin(phiRad),
-    z: r * Math.cos(thetaRad),
+    y: r * Math.cos(thetaRad),
+    z: r * Math.sin(thetaRad) * Math.sin(phiRad),
   };
+}
+
+/**
+ * Convert physics (x, y, z) with Z-up to Three.js (x, y, z) with Y-up.
+ */
+export function physicsToThree(px: number, py: number, pz: number): [number, number, number] {
+  return [px, pz, py];
 }
 
 export function dbToLinear(db: number): number {

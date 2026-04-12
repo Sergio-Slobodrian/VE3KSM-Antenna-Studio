@@ -1,3 +1,17 @@
+// Package main implements the Antenna Studio process launcher.
+// It starts both the Go backend server and the Vite frontend dev server
+// as child processes, prefixes their output for easy identification, and
+// manages their lifecycle via Unix signals.
+//
+// Signal handling behavior:
+//   - SIGINT (Ctrl+C once):  gracefully restart both processes
+//   - SIGINT twice within 2s: shut down completely
+//   - SIGTERM:               shut down completely (used by systemd, Docker, etc.)
+//   - SIGHUP:                restart both processes (conventional reload signal)
+//
+// Each child process runs in its own process group (Setpgid: true) so that
+// killAll can terminate the entire tree (e.g. node + its children) with a
+// single signal to the group leader.
 package main
 
 import (
@@ -13,14 +27,16 @@ import (
 	"time"
 )
 
+// Config holds the launcher's command-line configuration.
 type Config struct {
-	BackendPort  int
-	FrontendPort int
-	CORSOrigins  string
-	BackendDir   string
-	FrontendDir  string
+	BackendPort  int    // TCP port for the Go backend server
+	FrontendPort int    // TCP port for the Vite dev server
+	CORSOrigins  string // Comma-separated CORS origins passed to the backend
+	BackendDir   string // Filesystem path to the backend/ directory
+	FrontendDir  string // Filesystem path to the frontend/ directory
 }
 
+// process pairs a human-readable name with a running exec.Cmd for lifecycle management.
 type process struct {
 	name string
 	cmd  *exec.Cmd
@@ -35,7 +51,7 @@ func main() {
 	flag.StringVar(&cfg.FrontendDir, "frontend-dir", "", "Path to frontend directory (auto-detected if empty)")
 	flag.Parse()
 
-	// Auto-detect directories relative to this binary or cwd
+	// Auto-detect project root by searching for sibling backend/ and frontend/ dirs
 	root := detectRoot()
 	if cfg.BackendDir == "" {
 		cfg.BackendDir = filepath.Join(root, "backend")
@@ -47,7 +63,7 @@ func main() {
 		cfg.CORSOrigins = fmt.Sprintf("http://localhost:%d", cfg.FrontendPort)
 	}
 
-	// Validate directories exist
+	// Fail fast if the required directories are missing
 	for _, d := range []struct{ name, path string }{
 		{"backend", cfg.BackendDir},
 		{"frontend", cfg.FrontendDir},
@@ -66,6 +82,8 @@ func main() {
 	log.Println("Ctrl+C ×2   → shutdown (within 2s)")
 	log.Println()
 
+	// Listen for signals on a buffered channel (buffer=1 so we don't miss signals
+	// that arrive while we're processing the previous one)
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
 
@@ -81,21 +99,25 @@ func main() {
 
 	startAll()
 
+	// Track when the last SIGINT arrived for double-Ctrl+C detection
 	lastInterrupt := time.Time{}
 
 	for sig := range sigCh {
 		switch sig {
 		case syscall.SIGTERM:
+			// SIGTERM = clean shutdown (no restart)
 			log.Println("Received SIGTERM, shutting down...")
 			stopAll()
 			os.Exit(0)
 
 		case syscall.SIGHUP:
+			// SIGHUP = conventional "reload config" signal; we restart both processes
 			log.Println("Received SIGHUP, restarting...")
 			stopAll()
 			startAll()
 
 		case syscall.SIGINT:
+			// Single Ctrl+C = restart; double Ctrl+C within 2 seconds = quit
 			now := time.Now()
 			if now.Sub(lastInterrupt) < 2*time.Second {
 				log.Println("Double Ctrl+C, shutting down...")
@@ -110,6 +132,10 @@ func main() {
 	}
 }
 
+// launch starts both the backend and frontend child processes and returns
+// them as a slice for lifecycle management. The backend is started with
+// "go run ./cmd/server" and receives PORT and CORS_ORIGINS via environment
+// variables. The frontend runs "npx vite" on the configured port.
 func launch(cfg Config) []*process {
 	backend := startProcess("backend", cfg.BackendDir,
 		[]string{"go", "run", "./cmd/server"},
@@ -127,14 +153,22 @@ func launch(cfg Config) []*process {
 	return []*process{backend, frontend}
 }
 
+// startProcess spawns a child process with the given arguments, working
+// directory, and extra environment variables. It sets Setpgid=true so the
+// child gets its own process group, enabling killAll to terminate the entire
+// subtree. Stdout and stderr are piped through prefixWriter to tag each
+// line with "[name] " for easy identification in the launcher's output.
+// A background goroutine calls cmd.Wait() to reap the child and prevent zombies.
 func startProcess(name, dir string, args []string, extraEnv []string) *process {
 	cmd := exec.Command(args[0], args[1:]...)
 	cmd.Dir = dir
 	cmd.Stdout = &prefixWriter{prefix: fmt.Sprintf("[%s] ", name), w: os.Stdout}
 	cmd.Stderr = &prefixWriter{prefix: fmt.Sprintf("[%s] ", name), w: os.Stderr}
+	// Setpgid puts the child in its own process group so we can kill the
+	// entire group (including grandchildren like node workers) at once
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Inherit environment, add extras
+	// Inherit the launcher's environment and overlay any extra vars
 	cmd.Env = append(os.Environ(), extraEnv...)
 
 	if err := cmd.Start(); err != nil {
@@ -144,7 +178,8 @@ func startProcess(name, dir string, args []string, extraEnv []string) *process {
 
 	log.Printf("Started %s (PID %d)", name, cmd.Process.Pid)
 
-	// Reap the process in the background so it doesn't become a zombie
+	// Reap the child in the background to prevent zombie processes.
+	// This goroutine runs until the child exits.
 	go func() {
 		if err := cmd.Wait(); err != nil {
 			log.Printf("%s exited: %v", name, err)
@@ -156,12 +191,16 @@ func startProcess(name, dir string, args []string, extraEnv []string) *process {
 	return &process{name: name, cmd: cmd}
 }
 
+// killAll sends SIGTERM to the process group of each managed process.
+// Using the negative PGID (-pgid) sends the signal to every process in
+// the group, ensuring that child processes spawned by go or node are also
+// terminated. Falls back to Process.Kill() if the PGID lookup fails.
+// A 500ms pause gives processes time to flush output and clean up.
 func killAll(procs []*process) {
 	for _, p := range procs {
 		if p.cmd == nil || p.cmd.Process == nil {
 			continue
 		}
-		// Kill the entire process group so child processes (node, go) also die
 		pgid, err := syscall.Getpgid(p.cmd.Process.Pid)
 		if err == nil {
 			_ = syscall.Kill(-pgid, syscall.SIGTERM)
@@ -170,12 +209,18 @@ func killAll(procs []*process) {
 		}
 		log.Printf("Stopped %s", p.name)
 	}
-	// Brief pause for processes to clean up
+	// Brief pause for processes to flush and clean up
 	time.Sleep(500 * time.Millisecond)
 }
 
-// detectRoot finds the project root by looking for backend/ and frontend/ dirs.
-// Walks up from cwd and from the executable location to find the root.
+// detectRoot finds the project root directory by searching for a directory
+// that contains both backend/ and frontend/ subdirectories. It checks:
+//  1. The current working directory
+//  2. The directory containing the launcher executable
+//  3. Up to 4 parent directories from each of those starting points
+//
+// This lets the launcher work regardless of where it's invoked from:
+// from the project root, from backend/, or from a build output directory.
 func detectRoot() string {
 	candidates := []string{}
 
@@ -203,19 +248,26 @@ func detectRoot() string {
 	return cwd
 }
 
+// hasSubdirs checks whether a directory contains both backend/ and frontend/
+// subdirectories, which is the signature of the Antenna Studio project root.
 func hasSubdirs(dir string) bool {
 	_, err1 := os.Stat(filepath.Join(dir, "backend"))
 	_, err2 := os.Stat(filepath.Join(dir, "frontend"))
 	return err1 == nil && err2 == nil
 }
 
-// prefixWriter prepends a tag to each line of output
+// prefixWriter is an io.Writer that prepends a tag (e.g. "[backend] ") to
+// each line of output. It buffers partial lines until a newline is received,
+// ensuring the prefix is only inserted at line boundaries and not mid-line.
 type prefixWriter struct {
 	prefix string
 	w      *os.File
 	buf    []byte
 }
 
+// Write implements io.Writer. It appends data to an internal buffer and
+// flushes complete lines (terminated by '\n') with the prefix prepended.
+// Partial lines remain buffered until the next Write delivers a newline.
 func (pw *prefixWriter) Write(p []byte) (int, error) {
 	pw.buf = append(pw.buf, p...)
 	for {

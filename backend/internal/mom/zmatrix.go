@@ -8,35 +8,40 @@ import (
 	"gonum.org/v1/gonum/mat"
 )
 
-// Electromagnetic constants
+// Electromagnetic constants used throughout the MoM solver.
 const (
-	Mu0  = 4.0 * math.Pi * 1e-7 // permeability of free space (H/m)
-	C0   = 299792458.0           // speed of light (m/s)
-	Eps0 = 1.0 / (Mu0 * C0 * C0) // permittivity of free space (F/m)
-	Eta0 = Mu0 * C0              // free space impedance ~376.73 ohms
+	Mu0  = 4.0 * math.Pi * 1e-7  // permeability of free space, μ₀ = 4π×10⁻⁷ (H/m)
+	C0   = 299792458.0            // speed of light in vacuum (m/s)
+	Eps0 = 1.0 / (Mu0 * C0 * C0) // permittivity of free space, ε₀ = 1/(μ₀c²) ≈ 8.854×10⁻¹² (F/m)
+	Eta0 = Mu0 * C0               // intrinsic impedance of free space, η₀ = μ₀c ≈ 376.73 (Ω)
 )
 
-// BuildZMatrix assembles the N x N complex impedance matrix for the given segments.
-// k is the wavenumber (2*pi*f/c), omega is the angular frequency (2*pi*f).
+// BuildZMatrix assembles the N x N complex impedance matrix using the legacy
+// Pocklington kernel with pulse basis functions.
 //
-// Each element Z[i][j] is computed as:
+// NOTE: This function is no longer used in the main simulation path, which has
+// been upgraded to triangle (rooftop) basis functions via buildTriangleZMatrix
+// in solver.go. It is retained here because other code references the
+// electromagnetic constants defined in this file, and for potential future use
+// with alternative formulations.
 //
-//	Z[i][j] = j*omega*mu0/(4*pi) * integral_i integral_j K(s,s') ds ds'
+// Each element Z[i][j] represents the voltage induced on segment i due to a
+// unit current on segment j:
 //
-// where K is the Pocklington kernel. The prefactor j*omega*mu0/(4*pi) is applied here.
-// Self-terms (i==j) use the reduced kernel with higher quadrature order.
-// Off-diagonal terms use standard quadrature.
+//	Z[i][j] = jωμ₀/(4π) · ∫_i ∫_j K(s,s') ds ds'
 //
-// Computation is parallelized using a goroutine worker pool with runtime.NumCPU workers.
+// where K is the Pocklington kernel. Self-terms (i==j) use the reduced kernel
+// (thin-wire approximation) with the wire radius offset. The matrix fill is
+// parallelized across runtime.NumCPU() goroutine workers.
 func BuildZMatrix(segments []Segment, k float64, omega float64) *mat.CDense {
 	n := len(segments)
 	Z := mat.NewCDense(n, n, nil)
 
-	// Prefactor: j * omega * mu0 / (4*pi)
-	// The kernel uses ψ = exp(-jkR)/R (without the 1/(4π) factor).
+	// EFIE prefactor: jωμ₀/(4π). The kernel ψ = exp(-jkR)/R omits the 1/(4π)
+	// normalization, so it is included here instead.
 	prefactor := complex(0, omega*Mu0/(4.0*math.Pi))
 
-	// Worker pool for parallel impedance matrix fill
+	// Parallel worker pool to fill the N² matrix entries concurrently
 	numWorkers := runtime.NumCPU()
 	if numWorkers < 1 {
 		numWorkers = 1
@@ -48,9 +53,7 @@ func BuildZMatrix(segments []Segment, k float64, omega float64) *mat.CDense {
 
 	jobs := make(chan job, 256)
 	var wg sync.WaitGroup
-
-	// Mutex for CDense.Set since it's not documented as thread-safe
-	var mu sync.Mutex
+	var mu sync.Mutex // protects CDense.Set which is not guaranteed thread-safe
 
 	for w := 0; w < numWorkers; w++ {
 		wg.Add(1)
@@ -58,6 +61,7 @@ func BuildZMatrix(segments []Segment, k float64, omega float64) *mat.CDense {
 			defer wg.Done()
 			for jb := range jobs {
 				i, j := jb.i, jb.j
+				// Use reduced kernel (radius offset) for self-terms to regularize 1/R singularity
 				reduced := (i == j)
 				kernel := PocklingtonKernel(k, segments[i], segments[j], reduced)
 				val := prefactor * kernel
@@ -69,7 +73,7 @@ func BuildZMatrix(segments []Segment, k float64, omega float64) *mat.CDense {
 		}()
 	}
 
-	// Enqueue all matrix entries
+	// Enqueue all N² matrix entries
 	for i := 0; i < n; i++ {
 		for j := 0; j < n; j++ {
 			jobs <- job{i, j}

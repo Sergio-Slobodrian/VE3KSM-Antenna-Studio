@@ -1,3 +1,11 @@
+/**
+ * Impedance vs Frequency chart (Recharts line chart).
+ *
+ * Plots resistance R (solid orange) and reactance X (dashed cyan) on a shared
+ * Y axis in Ohms.  A zero-reference line helps identify the resonant frequency
+ * where X crosses zero.  The tooltip shows both R and X with the formatted
+ * complex impedance string.
+ */
 import React, { useMemo } from 'react';
 import {
   LineChart,

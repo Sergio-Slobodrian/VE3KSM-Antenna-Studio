@@ -1,3 +1,12 @@
+/**
+ * Bottom status bar.
+ *
+ * Displays one of four states:
+ *  - Error message (red) when a simulation fails or validation rejects input.
+ *  - "Simulating..." spinner while a backend request is in flight.
+ *  - Result summary (impedance, SWR, gain) after a successful simulation.
+ *  - Idle "Ready" message otherwise.
+ */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import { formatImpedance } from '@/utils/conversions';

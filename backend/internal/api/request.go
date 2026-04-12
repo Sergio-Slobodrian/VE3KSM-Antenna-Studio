@@ -1,3 +1,5 @@
+// Package api defines the HTTP API layer for the Antenna Studio backend.
+// It contains request/response DTOs, Gin handlers, and middleware.
 package api
 
 import (
@@ -5,7 +7,10 @@ import (
 	"math"
 )
 
-// SimulateRequest is the input DTO for a single-frequency simulation.
+// SimulateRequest is the JSON body the frontend sends to POST /api/simulate.
+// It describes a complete single-frequency MoM simulation: antenna geometry
+// (wires), operating frequency, ground environment, and excitation source.
+// Gin binding tags enforce structural constraints; Validate() handles semantic ones.
 type SimulateRequest struct {
 	Wires        []WireDTO `json:"wires" binding:"required,min=1"`
 	FrequencyMHz float64   `json:"frequency_mhz" binding:"required,gt=0"`
@@ -13,7 +18,11 @@ type SimulateRequest struct {
 	Source       SourceDTO `json:"source" binding:"required"`
 }
 
-// WireDTO describes a single wire element.
+// WireDTO describes a single straight wire element in 3D space.
+// The wire runs from (X1,Y1,Z1) to (X2,Y2,Z2) and is discretized into
+// Segments equal-length pieces for the MoM solver. Coordinates are in meters.
+// Radius is the wire conductor radius in meters; Segments is capped at 200
+// to keep the impedance matrix size manageable (N^2 memory).
 type WireDTO struct {
 	X1       float64 `json:"x1"`
 	Y1       float64 `json:"y1"`
@@ -26,22 +35,31 @@ type WireDTO struct {
 }
 
 // GroundDTO describes the ground plane configuration.
+// Type must be one of "free_space" (default), "perfect", or "real".
+// For "real" ground, Conductivity (S/m) and Permittivity (relative)
+// must both be positive; they are ignored for other ground types.
 type GroundDTO struct {
 	Type         string  `json:"type"`
 	Conductivity float64 `json:"conductivity"`
 	Permittivity float64 `json:"permittivity"`
 }
 
-// SourceDTO describes the excitation source location and voltage.
+// SourceDTO identifies the excitation point on the antenna structure.
+// WireIndex selects which wire carries the source (0-based into the Wires slice).
+// SegmentIndex selects which segment on that wire is the feed point (0-based).
+// Voltage is the applied voltage magnitude in volts; 0 defaults to 1V in the solver.
 type SourceDTO struct {
 	WireIndex    int     `json:"wire_index"`
 	SegmentIndex int     `json:"segment_index"`
 	Voltage      float64 `json:"voltage"`
 }
 
-// SweepRequest describes a frequency sweep simulation. It duplicates
-// wire/source/ground fields rather than embedding SimulateRequest so
-// that the binding tag "required" on FrequencyMHz doesn't reject sweeps.
+// SweepRequest is the JSON body for POST /api/sweep, which runs the MoM solver
+// at multiple frequencies to produce SWR and impedance curves.
+// It duplicates wire/source/ground fields rather than embedding SimulateRequest
+// because Gin's binding tag "required" on FrequencyMHz would reject sweep
+// requests (which use FreqStart/FreqEnd instead).
+// FreqSteps is capped at 500 to bound total computation time.
 type SweepRequest struct {
 	Wires     []WireDTO `json:"wires" binding:"required,min=1"`
 	Ground    GroundDTO `json:"ground"`
@@ -52,7 +70,8 @@ type SweepRequest struct {
 }
 
 // ToSimulateRequest converts a SweepRequest into a SimulateRequest using
-// the sweep start frequency so the shared Validate() logic can be reused.
+// the sweep start frequency. This lets us reuse SimulateRequest.Validate()
+// for checking wire geometry, ground config, and source references.
 func (s *SweepRequest) ToSimulateRequest() SimulateRequest {
 	return SimulateRequest{
 		Wires:        s.Wires,
@@ -62,15 +81,23 @@ func (s *SweepRequest) ToSimulateRequest() SimulateRequest {
 	}
 }
 
-// validGroundTypes lists the accepted ground type values.
+// validGroundTypes is the set of accepted ground type strings.
+// Empty string is not listed here; Validate() normalizes it to "free_space".
 var validGroundTypes = map[string]bool{
 	"free_space": true,
 	"perfect":    true,
 	"real":       true,
 }
 
-// Validate performs semantic validation on the SimulateRequest beyond
-// what Gin's binding tags handle.
+// Validate performs semantic validation on the SimulateRequest that goes beyond
+// what Gin's struct binding tags can express. It checks:
+//   - At least one wire with non-zero length and positive radius
+//   - Thin-wire approximation: wire radius must be less than half the segment length,
+//     because the MoM kernel assumes current flows along a thin filament
+//   - Ground type is valid; "real" ground has positive conductivity and permittivity
+//   - Source wire_index and segment_index are within bounds of the wire array
+//
+// This method may mutate r.Ground.Type (normalizing "" to "free_space").
 func (r *SimulateRequest) Validate() error {
 	if len(r.Wires) == 0 {
 		return fmt.Errorf("at least one wire is required")
@@ -94,7 +121,9 @@ func (r *SimulateRequest) Validate() error {
 		if w.Segments < 1 {
 			return fmt.Errorf("wire %d must have at least 1 segment, got %d", i, w.Segments)
 		}
-		// Thin-wire approximation check: radius should be much smaller than segment length
+		// Thin-wire approximation: the MoM solver assumes current flows along
+		// a filament; if the radius approaches the segment length, the kernel
+		// integrals become inaccurate and results are physically meaningless.
 		segLen := length / float64(w.Segments)
 		if w.Radius > segLen/2 {
 			return fmt.Errorf("wire %d: radius (%e m) too large relative to segment length (%e m); thin-wire approximation requires radius << segment length",
@@ -102,7 +131,7 @@ func (r *SimulateRequest) Validate() error {
 		}
 	}
 
-	// Validate ground type, default to free_space
+	// Normalize empty ground type to the default free-space environment
 	if r.Ground.Type == "" {
 		r.Ground.Type = "free_space"
 	}
@@ -110,6 +139,7 @@ func (r *SimulateRequest) Validate() error {
 		return fmt.Errorf("invalid ground type %q; must be one of: free_space, perfect, real", r.Ground.Type)
 	}
 
+	// Real ground needs material properties for the Fresnel reflection coefficients
 	if r.Ground.Type == "real" {
 		if r.Ground.Conductivity <= 0 {
 			return fmt.Errorf("real ground requires positive conductivity")
@@ -119,7 +149,7 @@ func (r *SimulateRequest) Validate() error {
 		}
 	}
 
-	// Validate source references
+	// Ensure the source references a valid wire and segment within that wire
 	if r.Source.WireIndex < 0 || r.Source.WireIndex >= len(r.Wires) {
 		return fmt.Errorf("source wire_index %d out of range [0, %d)", r.Source.WireIndex, len(r.Wires))
 	}

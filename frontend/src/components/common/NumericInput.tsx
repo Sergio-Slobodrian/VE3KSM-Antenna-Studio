@@ -1,3 +1,10 @@
+/**
+ * Reusable labelled numeric input.
+ *
+ * Wraps a standard HTML number input with optional label, min/max/step
+ * constraints, and configurable width.  Parses the string value on change
+ * and only fires the callback when the result is a valid number.
+ */
 import React from 'react';
 
 interface NumericInputProps {
@@ -7,6 +14,7 @@ interface NumericInputProps {
   max?: number;
   step?: number;
   label?: string;
+  /** CSS width for the input element (default "80px"). */
   width?: string;
 }
 

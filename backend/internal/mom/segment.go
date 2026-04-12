@@ -2,42 +2,56 @@ package mom
 
 import "math"
 
-// Segment represents a discretized wire segment for the Method of Moments.
+// Segment represents a single discretized wire segment for the Method of Moments.
+// Each segment is a short straight piece of wire characterized by its center point,
+// endpoints, half-length, orientation (unit direction vector), and wire radius.
+// The MoM solver uses these segments as the domain for basis function expansion.
 type Segment struct {
-	Index      int
-	WireIndex  int
-	Center     [3]float64
-	Start      [3]float64
-	End        [3]float64
-	HalfLength float64
-	Direction  [3]float64
-	Radius     float64
+	Index      int        // global index across all wires (used for matrix addressing)
+	WireIndex  int        // index of the parent wire this segment belongs to
+	Center     [3]float64 // midpoint of the segment (m) — used as the collocation point
+	Start      [3]float64 // start endpoint of the segment (m)
+	End        [3]float64 // end endpoint of the segment (m)
+	HalfLength float64    // half the segment length (m), i.e. Δl/2
+	Direction  [3]float64 // unit vector along the segment from Start to End
+	Radius     float64    // wire cross-section radius (m) — used in the thin-wire kernel
 }
 
 // SubdivideWire divides a straight wire into numSegments equal-length segments.
-// wireIndex identifies which wire this belongs to.
-// (x1,y1,z1) and (x2,y2,z2) are the wire endpoints.
-// radius is the wire radius. numSegments is the number of subdivisions.
+// This is the geometry discretization step of MoM: the continuous wire is replaced
+// by a chain of short segments on which basis functions will be defined.
+//
+// Parameters:
+//   - wireIndex: index of this wire in the input wire array
+//   - (x1,y1,z1), (x2,y2,z2): wire endpoints in Cartesian coordinates (m)
+//   - radius: wire cross-section radius (m)
+//   - numSegments: number of subdivisions (clamped to minimum 1)
+//
+// Returns nil if the wire has zero length. The returned segments have local
+// indices (0..N-1); the caller is responsible for assigning global indices.
 func SubdivideWire(wireIndex int, x1, y1, z1, x2, y2, z2 float64, radius float64, numSegments int) []Segment {
 	if numSegments < 1 {
 		numSegments = 1
 	}
 
+	// Wire vector from start to end
 	dx := x2 - x1
 	dy := y2 - y1
 	dz := z2 - z1
 	wireLength := math.Sqrt(dx*dx + dy*dy + dz*dz)
 	if wireLength < 1e-15 {
-		return nil
+		return nil // degenerate zero-length wire
 	}
 
+	// Each segment has length wireLength/numSegments; store half for quadrature scaling
 	halfLen := wireLength / (2.0 * float64(numSegments))
 
-	// Unit direction vector along the wire
+	// Unit direction vector along the wire (shared by all segments of this wire)
 	dir := [3]float64{dx / wireLength, dy / wireLength, dz / wireLength}
 
 	segments := make([]Segment, numSegments)
 	for i := 0; i < numSegments; i++ {
+		// Parametric positions along the wire: t in [0, 1]
 		tCenter := (float64(i) + 0.5) / float64(numSegments)
 		tStart := float64(i) / float64(numSegments)
 		tEnd := float64(i+1) / float64(numSegments)

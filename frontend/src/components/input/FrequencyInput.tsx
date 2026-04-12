@@ -1,3 +1,11 @@
+/**
+ * Frequency configuration panel.
+ *
+ * Supports two modes via a toggle:
+ *  - Single: one frequency in MHz for a point simulation.
+ *  - Sweep: start/end frequencies and step count for a frequency sweep.
+ * The step count is rounded to an integer on change.
+ */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import NumericInput from '@/components/common/NumericInput';

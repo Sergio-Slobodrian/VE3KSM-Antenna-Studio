@@ -1,3 +1,11 @@
+/**
+ * Wire geometry table.
+ *
+ * Displays all wires in a tabular form with editable endpoint coordinates,
+ * radius, and segment count.  Includes a unit-selector dropdown that controls
+ * the display unit for all length fields (conversion is handled in WireRow).
+ * An "Add Wire" button appends a new default wire.
+ */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import WireRow from './WireRow';

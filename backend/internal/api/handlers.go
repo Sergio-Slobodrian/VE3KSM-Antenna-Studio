@@ -9,7 +9,12 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// HandleSimulate processes a single-frequency simulation request.
+// HandleSimulate is the Gin handler for POST /api/simulate.
+// It runs a single-frequency MoM simulation and returns impedance, SWR,
+// gain, far-field pattern, and current distribution.
+//
+// Request flow: bind JSON -> semantic validation -> convert to solver input -> solve -> respond.
+// Returns 400 for invalid input, 500 if the solver fails internally.
 func HandleSimulate(c *gin.Context) {
 	var req SimulateRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -32,7 +37,12 @@ func HandleSimulate(c *gin.Context) {
 	c.JSON(http.StatusOK, SolverResultToResponse(result))
 }
 
-// HandleSweep processes a frequency sweep request.
+// HandleSweep is the Gin handler for POST /api/sweep.
+// It runs the MoM solver at evenly-spaced frequencies between FreqStart and
+// FreqEnd, returning parallel arrays of frequency, SWR, and impedance values.
+// The geometry is validated once using the start frequency, then the solver
+// iterates across the full range. Frequencies in the request are in MHz;
+// the solver expects Hz, so they are converted before calling mom.Sweep.
 func HandleSweep(c *gin.Context) {
 	var req SweepRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -40,6 +50,7 @@ func HandleSweep(c *gin.Context) {
 		return
 	}
 
+	// Reuse SimulateRequest.Validate() by converting with the start frequency
 	simReq := req.ToSimulateRequest()
 	if err := simReq.Validate(); err != nil {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
@@ -48,6 +59,7 @@ func HandleSweep(c *gin.Context) {
 
 	input := simulateRequestToInput(simReq)
 
+	// Convert MHz to Hz for the solver
 	freqStartHz := req.FreqStart * 1e6
 	freqEndHz := req.FreqEnd * 1e6
 
@@ -60,14 +72,19 @@ func HandleSweep(c *gin.Context) {
 	c.JSON(http.StatusOK, SweepResultToResponse(result))
 }
 
-// HandleGetTemplates returns all available antenna templates.
+// HandleGetTemplates is the Gin handler for GET /api/templates.
+// It returns a JSON array of available antenna preset templates, each with
+// its name, description, and configurable parameters. The Generate function
+// is excluded from the response (json:"-") since it is not serializable.
+// The frontend uses this list to populate the template picker UI.
 func HandleGetTemplates(c *gin.Context) {
 	templates := geometry.GetTemplates()
 
+	// templateInfo is a local projection that omits the Generate function
 	type templateInfo struct {
-		Name        string                    `json:"name"`
-		Description string                    `json:"description"`
-		Parameters  []geometry.TemplateParam   `json:"parameters"`
+		Name        string                   `json:"name"`
+		Description string                   `json:"description"`
+		Parameters  []geometry.TemplateParam  `json:"parameters"`
 	}
 
 	resp := make([]templateInfo, len(templates))
@@ -82,7 +99,11 @@ func HandleGetTemplates(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
-// HandleGenerateTemplate generates antenna geometry from a named template.
+// HandleGenerateTemplate is the Gin handler for POST /api/templates/:name.
+// It looks up the named template, applies the provided parameter overrides
+// (or defaults if the body is empty), and returns the generated wire geometry,
+// source placement, and ground config. The frontend loads this result directly
+// into the 3D editor. Returns 404 if the template name is not recognized.
 func HandleGenerateTemplate(c *gin.Context) {
 	name := c.Param("name")
 
@@ -108,7 +129,11 @@ func HandleGenerateTemplate(c *gin.Context) {
 	c.JSON(http.StatusNotFound, ErrorResponse{Error: "template not found: " + name})
 }
 
-// simulateRequestToInput converts an API request DTO to the solver's input type.
+// simulateRequestToInput converts an API request DTO to the MoM solver's
+// internal SimulationInput type. This is the API-to-domain boundary.
+// It converts frequency from MHz to Hz and maps DTOs to solver structs.
+// If the source voltage is zero (omitted from JSON), it defaults to 1V
+// so the solver always has a non-zero excitation.
 func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 	wires := make([]mom.Wire, len(req.Wires))
 	for i, w := range req.Wires {
@@ -124,6 +149,7 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 		}
 	}
 
+	// Default to 1V excitation when voltage is omitted or zero
 	voltage := complex(req.Source.Voltage, 0)
 	if req.Source.Voltage == 0 {
 		voltage = 1 + 0i
@@ -131,7 +157,7 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 
 	return mom.SimulationInput{
 		Wires:     wires,
-		Frequency: req.FrequencyMHz * 1e6,
+		Frequency: req.FrequencyMHz * 1e6, // MHz -> Hz
 		Ground: mom.GroundConfig{
 			Type:         req.Ground.Type,
 			Conductivity: req.Ground.Conductivity,

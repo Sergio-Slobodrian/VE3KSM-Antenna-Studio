@@ -1,3 +1,15 @@
+/**
+ * 3D radiation pattern viewer using Three.js.
+ *
+ * Builds a triangulated surface mesh from the simulation's far-field pattern
+ * data (theta/phi grid of gain values).  The radial distance of each vertex
+ * is derived from the dB gain via a log-power mapping, so lobes are visually
+ * proportional to gain.  Vertex colours use an HSL ramp from blue (low gain)
+ * through green/yellow to red (high gain).
+ *
+ * Coordinate mapping: physics spherical (theta from +Z, phi in XY) is
+ * converted to Three.js Y-up Cartesian via `sphericalToCartesian`.
+ */
 import React, { useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
@@ -6,6 +18,7 @@ import { useAntennaStore } from '@/store/antennaStore';
 import { sphericalToCartesian } from '@/utils/conversions';
 import ColorScale from '@/components/common/ColorScale';
 
+/** Builds and renders the 3D radiation-pattern surface mesh. */
 const PatternMesh: React.FC = () => {
   const simulationResult = useAntennaStore((s) => s.simulationResult);
 
@@ -18,7 +31,7 @@ const PatternMesh: React.FC = () => {
     const maxGain = Math.max(...gains);
     const gainRange = maxGain - minGain || 1;
 
-    // Build a map of theta/phi unique values
+    // Extract sorted unique theta and phi values to form the grid axes
     const thetaSet = new Set<number>();
     const phiSet = new Set<number>();
     pattern.forEach((p) => {
@@ -31,7 +44,7 @@ const PatternMesh: React.FC = () => {
 
     if (thetas.length < 2 || phis.length < 2) return null;
 
-    // Build a lookup map
+    // Fast lookup: "theta,phi" -> gainDb for grid vertex generation
     const gainMap = new Map<string, number>();
     pattern.forEach((p) => {
       gainMap.set(`${p.theta},${p.phi}`, p.gainDb);
@@ -41,26 +54,27 @@ const PatternMesh: React.FC = () => {
     const colors: number[] = [];
     const indices: number[] = [];
 
-    // Generate vertices
+    // Generate vertices: radial distance from dB gain, colour from normalised gain
     for (let ti = 0; ti < thetas.length; ti++) {
       for (let pi = 0; pi < phis.length; pi++) {
         const theta = thetas[ti];
         const phi = phis[pi];
         const gain = gainMap.get(`${theta},${phi}`) ?? minGain;
         const normalized = (gain - minGain) / gainRange;
+        // Log-power radius: ensures the lowest-gain points are still visible (offset +3 dB)
         const r = Math.pow(10, (gain - minGain + 3) / 20) * 0.5;
 
         const { x, y, z } = sphericalToCartesian(r, theta, phi);
         positions.push(x, y, z);
 
-        // Color: blue (low) -> green -> yellow -> red (high)
+        // HSL colour ramp: hue 0.66 (blue) at low gain down to 0 (red) at high gain
         const color = new THREE.Color();
         color.setHSL((1 - normalized) * 0.66, 1.0, 0.5);
         colors.push(color.r, color.g, color.b);
       }
     }
 
-    // Generate triangle indices
+    // Generate triangle indices for each quad cell in the theta x phi grid
     for (let ti = 0; ti < thetas.length - 1; ti++) {
       for (let pi = 0; pi < phis.length - 1; pi++) {
         const a = ti * phis.length + pi;
@@ -91,6 +105,7 @@ const PatternMesh: React.FC = () => {
   );
 };
 
+/** Outer component: shows the 3D pattern canvas with a colour-scale legend overlay. */
 const PatternViewer: React.FC = () => {
   const simulationResult = useAntennaStore((s) => s.simulationResult);
 

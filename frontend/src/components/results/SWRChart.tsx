@@ -1,3 +1,15 @@
+/**
+ * SWR vs Frequency chart (Recharts line chart).
+ *
+ * Features:
+ *  - Automatic log-scale switching when the SWR range exceeds 10:1.
+ *    In log mode the Y axis plots log10(SWR) with custom tick labels that
+ *    show the original SWR values (e.g. 1, 2, 5, 10, 100).
+ *  - Reference lines at SWR 2:1 (orange dashed) and 3:1 (grey dashed).
+ *  - Tooltip shows the raw SWR value regardless of scale mode.
+ *  - SWR values below 1 are clamped to 1 in the log calculation to avoid
+ *    negative log results from numerical noise.
+ */
 import React, { useMemo } from 'react';
 import {
   LineChart,
@@ -14,6 +26,7 @@ import { useAntennaStore } from '@/store/antennaStore';
 const SWRChart: React.FC = () => {
   const sweepResult = useAntennaStore((s) => s.sweepResult);
 
+  // Prepare chart data: include both raw SWR and log10(SWR) so either can be plotted
   const data = useMemo(() => {
     if (!sweepResult) return [];
     return sweepResult.frequencies.map((freq, i) => {
@@ -21,7 +34,7 @@ const SWRChart: React.FC = () => {
       return {
         frequency: freq,
         swr: raw,
-        swrLog: Math.log10(Math.max(raw, 1)),
+        swrLog: Math.log10(Math.max(raw, 1)), // clamp to 1 to avoid log of values < 1
       };
     });
   }, [sweepResult]);
@@ -45,11 +58,10 @@ const SWRChart: React.FC = () => {
     );
   }
 
-  // Use log scale when the range spans more than 10x
+  // Automatically switch to log scale when the SWR dynamic range exceeds 10:1
   const useLog = maxSwr / Math.max(minSwr, 1) > 10;
 
-  // For log scale: Y axis is log10(SWR)
-  // Generate nice tick values
+  // Predefined "nice" SWR tick values; filter to the visible range for log-scale ticks
   const logTicks = [1, 2, 3, 5, 10, 20, 50, 100, 500, 1000, 10000];
   const logTicksFiltered = logTicks.filter(
     (t) => t >= Math.floor(minSwr) && t <= Math.min(maxSwr * 1.2, 100000)

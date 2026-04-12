@@ -1,3 +1,10 @@
+/**
+ * Source excitation configuration panel.
+ *
+ * Lets the user pick which wire and segment receives the voltage source, and
+ * set the source voltage.  The segment dropdown is dynamically bounded by the
+ * selected wire's segment count (0-based indexing).
+ */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import NumericInput from '@/components/common/NumericInput';

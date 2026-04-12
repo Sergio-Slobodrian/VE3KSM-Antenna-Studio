@@ -1,3 +1,10 @@
+/**
+ * Ground-plane configuration panel.
+ *
+ * Offers three ground types: Free Space (no ground), Perfect (PEC at Z=0),
+ * and Real (lossy ground with user-specified conductivity and permittivity).
+ * Conductivity/permittivity fields are only shown when "Real Ground" is selected.
+ */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import NumericInput from '@/components/common/NumericInput';

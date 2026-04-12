@@ -1,3 +1,11 @@
+/**
+ * Editable row for a single wire in the WireTable.
+ *
+ * Handles unit conversion between the internal meters representation and the
+ * user-selected display unit.  Length fields (coordinates + radius) are
+ * multiplied by METERS_TO_UNIT[displayUnit] for display and divided back on
+ * input.  The 'segments' field is unitless and passed through directly.
+ */
 import React from 'react';
 import type { Wire } from '@/types';
 import { METERS_TO_UNIT } from '@/types';
@@ -16,6 +24,7 @@ const WireRow: React.FC<WireRowProps> = ({ wire, index }) => {
   const isSelected = selectedWireId === wire.id;
   const factor = METERS_TO_UNIT[displayUnit];
 
+  /** Parse the display-unit value and convert back to meters before storing. */
   const handleChange = (field: keyof Wire, value: string) => {
     const num = parseFloat(value);
     if (!isNaN(num)) {
@@ -25,6 +34,7 @@ const WireRow: React.FC<WireRowProps> = ({ wire, index }) => {
     }
   };
 
+  /** Convert the internal meters value to the current display unit. */
   const displayValue = (field: keyof Wire): number => {
     const raw = wire[field] as number;
     return lengthFields.includes(field) ? raw * factor : raw;

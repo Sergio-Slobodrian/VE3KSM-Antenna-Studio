@@ -28,15 +28,18 @@ export function physicsToThree(px: number, py: number, pz: number): [number, num
   return [px, pz, py];
 }
 
+/** Convert a decibel power value to a linear scale factor. */
 export function dbToLinear(db: number): number {
   return Math.pow(10, db / 10);
 }
 
+/** Convert a linear power ratio to decibels; clamps non-positive inputs to -100 dB. */
 export function linearToDb(linear: number): number {
   if (linear <= 0) return -100;
   return 10 * Math.log10(linear);
 }
 
+/** Format complex impedance R + jX as a human-readable string with Ohm symbol. */
 export function formatImpedance(r: number, x: number): string {
   const sign = x >= 0 ? '+' : '-';
   return `${r.toFixed(1)} ${sign} j${Math.abs(x).toFixed(1)} \u03A9`;

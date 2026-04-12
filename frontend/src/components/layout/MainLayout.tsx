@@ -1,3 +1,12 @@
+/**
+ * Main layout with a resizable split panel.
+ *
+ * Left panel: scrollable input forms (wires, source, ground, frequency).
+ * Right panel: tabbed viewer switching between 3D editor, radiation pattern,
+ * SWR chart, impedance chart, and current distribution.
+ *
+ * The divider is mouse-draggable and the left panel can be collapsed.
+ */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import WireTable from '@/components/input/WireTable';
 import SourceConfig from '@/components/input/SourceConfig';
@@ -11,6 +20,7 @@ import CurrentDisplay from '@/components/results/CurrentDisplay';
 
 type Tab = '3d' | 'pattern' | 'swr' | 'impedance' | 'currents';
 
+// Constraints for the draggable left-panel width (pixels)
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 800;
 const DEFAULT_PANEL_WIDTH = 350;
@@ -23,6 +33,9 @@ const MainLayout: React.FC = () => {
   const startX = useRef(0);
   const startWidth = useRef(0);
 
+  // --- Drag-to-resize logic ---
+  // onMouseDown captures the initial position; window-level move/up handlers
+  // update panel width and clean up cursor override on release.
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;

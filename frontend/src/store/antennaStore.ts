@@ -1,3 +1,10 @@
+/**
+ * Zustand store for global antenna-design state.
+ *
+ * Holds the antenna geometry (wires), excitation source, ground configuration,
+ * frequency settings, simulation results, and UI state (selected wire, display
+ * unit, loading flag, error message).  All spatial values are stored in meters.
+ */
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type {
@@ -10,6 +17,7 @@ import type {
   DisplayUnit,
 } from '@/types';
 
+/** Full shape of the Zustand store: state fields + action methods. */
 interface AntennaState {
   wires: Wire[];
   source: Source;
@@ -39,10 +47,12 @@ interface AntennaState {
 
 const defaultWireId = uuidv4();
 
-// Half-wave dipole for 14 MHz: wavelength = 300/14 ~= 21.43m, half-wave ~= 10.71m
-// Vertical along Z axis, centered at origin
+// Default antenna: half-wave dipole for 14 MHz (20 m band).
+// Wavelength = 300/14 ~= 21.43 m, half-wave ~= 10.71 m.
+// Oriented vertically along the Z axis, centred at the origin.
 const DEFAULT_DIPOLE_LENGTH = 10.71;
 
+/** Zustand hook providing the global antenna state and actions. */
 export const useAntennaStore = create<AntennaState>((set) => ({
   wires: [
     {
@@ -81,6 +91,9 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   isSimulating: false,
   error: null,
 
+  // --- Actions ---
+
+  /** Append a new wire with sensible defaults; optional partial overrides. */
   addWire: (wire) =>
     set((state) => ({
       wires: [
@@ -100,11 +113,13 @@ export const useAntennaStore = create<AntennaState>((set) => ({
       ],
     })),
 
+  /** Patch one or more fields on an existing wire by id. */
   updateWire: (id, updates) =>
     set((state) => ({
       wires: state.wires.map((w) => (w.id === id ? { ...w, ...updates } : w)),
     })),
 
+  /** Delete a wire; clears selection if the deleted wire was selected. */
   removeWire: (id) =>
     set((state) => ({
       wires: state.wires.filter((w) => w.id !== id),
@@ -123,6 +138,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   selectWire: (id) => set({ selectedWireId: id }),
   setDisplayUnit: (unit) => set({ displayUnit: unit }),
 
+  /** Replace the entire antenna model with a backend-generated template. Clears results. */
   loadTemplate: (data) =>
     set({
       wires: data.wires,

@@ -1,3 +1,11 @@
+/**
+ * Dropdown that loads predefined antenna templates from the backend.
+ *
+ * On mount, fetches the template list via GET /api/templates.  When the user
+ * selects a template, posts its default parameters to GET the generated
+ * geometry, then loads it into the store (replacing all wires, source, ground).
+ * The select resets to the placeholder after each selection.
+ */
 import React, { useEffect, useState } from 'react';
 import { getTemplates, generateTemplate } from '@/api/client';
 import { useAntennaStore } from '@/store/antennaStore';

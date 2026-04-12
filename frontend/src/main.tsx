@@ -1,3 +1,7 @@
+/**
+ * Application entry point.
+ * Mounts the React tree into the #root element with StrictMode enabled.
+ */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';

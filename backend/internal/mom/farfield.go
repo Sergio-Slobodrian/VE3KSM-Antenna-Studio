@@ -5,30 +5,48 @@ import (
 	"math/cmplx"
 )
 
-// ComputeFarField computes the far-field radiation pattern and peak directivity (gain in dBi).
+// ComputeFarField computes the far-field radiation pattern and peak directivity
+// for an antenna in free space (no ground plane).
 //
-// For each direction (theta, phi), the electric field is computed by summing contributions
-// from all current-carrying segments:
+// The far-field electric field in direction (theta, phi) is computed using the
+// standard array-factor summation over all current-carrying segments:
 //
-//	E(theta,phi) ~ sum_n I_n * deltaL_n * (dir_n projected onto theta/phi) * exp(jk * r_hat · center_n)
+//	E(θ,φ) ∝ Σ_n I_n · Δl_n · [ŝ_n projected onto θ̂/φ̂] · exp(jk · r̂ · r_n)
 //
-// Directivity is: D = 4*pi * |E_max|^2 / integral(|E|^2 sin(theta) dtheta dphi)
+// where:
+//   - I_n is the complex current on segment n (A)
+//   - Δl_n is the segment length (m)
+//   - ŝ_n is the segment direction unit vector
+//   - r_n is the segment center position (m)
+//   - r̂ is the observation direction unit vector
+//   - k is the free-space wavenumber (rad/m)
 //
-// Returns pattern points (theta 0..180 step 2 deg, phi 0..360 step 2 deg) and peak gain in dBi.
+// The phase term exp(jk·r̂·r_n) accounts for the path length difference between
+// each segment and the far-field reference point (origin). The projection onto
+// θ̂ and φ̂ decomposes the radiated field into its two polarization components.
+//
+// Directivity is computed as:
+//
+//	D(θ,φ) = 4π · |E(θ,φ)|² / ∫∫ |E|² sin(θ) dθ dφ
+//
+// The sphere is sampled on a 2-degree grid in both theta and phi. The integral
+// is evaluated via rectangular quadrature over the grid.
+//
+// Returns the full-sphere pattern and the peak directivity in dBi.
 func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]PatternPoint, float64) {
 	const (
-		thetaStep = 2.0 // degrees
-		phiStep   = 2.0 // degrees
+		thetaStep = 2.0              // angular resolution in theta (degrees)
+		phiStep   = 2.0              // angular resolution in phi (degrees)
 		deg2rad   = math.Pi / 180.0
 	)
 
-	nTheta := int(180.0/thetaStep) + 1
-	nPhi := int(360.0/phiStep) + 1
+	nTheta := int(180.0/thetaStep) + 1 // 0, 2, 4, ..., 180
+	nPhi := int(360.0/phiStep) + 1     // 0, 2, 4, ..., 360
 	total := nTheta * nPhi
 
 	pattern := make([]PatternPoint, 0, total)
-	eSquared := make([]float64, 0, total)
-	thetaRads := make([]float64, 0, total)
+	eSquared := make([]float64, 0, total)   // |E|² at each sample point
+	thetaRads := make([]float64, 0, total)  // theta in radians (for integration weights)
 	maxEsq := 0.0
 
 	for it := 0; it < nTheta; it++ {
@@ -43,25 +61,24 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 			sinPhi := math.Sin(phiRad)
 			cosPhi := math.Cos(phiRad)
 
-			// Observation direction unit vector
-			rHat := [3]float64{
+			// Spherical coordinate unit vectors in Cartesian components
+			rHat := [3]float64{          // radial direction (observation)
 				sinTheta * cosPhi,
 				sinTheta * sinPhi,
 				cosTheta,
 			}
-
-			// Polarization unit vectors
-			thetaHat := [3]float64{
+			thetaHat := [3]float64{      // theta polarization direction
 				cosTheta * cosPhi,
 				cosTheta * sinPhi,
 				-sinTheta,
 			}
-			phiHat := [3]float64{
+			phiHat := [3]float64{        // phi polarization direction
 				-sinPhi,
 				cosPhi,
 				0,
 			}
 
+			// Sum contributions from all segments to get E_theta and E_phi
 			var eTheta, ePhi complex128
 
 			for n, seg := range segments {
@@ -69,15 +86,18 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 					break
 				}
 				In := currents[n]
-				deltaL := 2.0 * seg.HalfLength
+				deltaL := 2.0 * seg.HalfLength // full segment length (m)
 
-				// Phase: exp(jk * r_hat · center_n)
+				// Far-field phase factor: accounts for the path length difference
+				// between this segment and the phase reference at the origin
 				dotRC := rHat[0]*seg.Center[0] + rHat[1]*seg.Center[1] + rHat[2]*seg.Center[2]
 				phase := cmplx.Exp(complex(0, k*dotRC))
 
+				// Current moment: I_n * Δl_n * exp(jk·r̂·r_n)
 				moment := In * complex(deltaL, 0) * phase
 
-				// Project segment current direction onto far-field polarization vectors
+				// Project the segment's current direction onto the far-field
+				// polarization basis vectors to get theta and phi field components
 				dTheta := seg.Direction[0]*thetaHat[0] + seg.Direction[1]*thetaHat[1] + seg.Direction[2]*thetaHat[2]
 				dPhi := seg.Direction[0]*phiHat[0] + seg.Direction[1]*phiHat[1] + seg.Direction[2]*phiHat[2]
 
@@ -85,6 +105,7 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 				ePhi += moment * complex(dPhi, 0)
 			}
 
+			// Total |E|² = |E_theta|² + |E_phi|² (both polarizations)
 			esq := real(eTheta)*real(eTheta) + imag(eTheta)*imag(eTheta) +
 				real(ePhi)*real(ePhi) + imag(ePhi)*imag(ePhi)
 
@@ -98,12 +119,13 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 			pattern = append(pattern, PatternPoint{
 				ThetaDeg: theta,
 				PhiDeg:   phi,
-				GainDB:   0, // filled in below
+				GainDB:   0, // placeholder, filled in after integration
 			})
 		}
 	}
 
-	// Integrate |E|^2 over sphere for total radiated power
+	// Numerically integrate |E|² over the full sphere to get total radiated power.
+	// Uses rectangular quadrature: P_rad ∝ Σ |E|² sin(θ) Δθ Δφ
 	dTheta := thetaStep * deg2rad
 	dPhi := phiStep * deg2rad
 	totalPower := 0.0
@@ -112,7 +134,7 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 		totalPower += esq * sinTheta * dTheta * dPhi
 	}
 
-	// Directivity and gain
+	// Convert |E|² to directivity D = 4π·|E|²/P_rad, then to dBi = 10·log10(D)
 	var gainDBi float64
 	if totalPower > 1e-30 {
 		directivityMax := 4.0 * math.Pi * maxEsq / totalPower
@@ -120,12 +142,13 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 			gainDBi = 10.0 * math.Log10(directivityMax)
 		}
 
+		// Fill in per-direction gain values
 		for idx := range pattern {
 			d := 4.0 * math.Pi * eSquared[idx] / totalPower
 			if d > 1e-30 {
 				pattern[idx].GainDB = 10.0 * math.Log10(d)
 			} else {
-				pattern[idx].GainDB = -100.0
+				pattern[idx].GainDB = -100.0 // floor for negligible radiation
 			}
 		}
 	}
@@ -133,15 +156,26 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 	return pattern, gainDBi
 }
 
-// ComputeFarFieldWithGround computes the far-field for an antenna over a perfect ground plane.
-// It sums contributions from both real and image segments, and restricts the pattern
-// to the upper hemisphere (theta 0..90°). Below ground (theta > 90°) is set to -100 dB.
-// The total radiated power is integrated over the upper hemisphere only, and then
-// doubled (by symmetry) for the directivity calculation.
+// ComputeFarFieldWithGround computes the far-field radiation pattern for an
+// antenna over a perfect electric conductor (PEC) ground plane at z=0.
+//
+// The computation differs from free-space (ComputeFarField) in two ways:
+//  1. Both real and image segment contributions are summed for each observation
+//     direction. The image segments carry the same currents but with directions
+//     modified per PEC image theory (see ApplyPerfectGround).
+//  2. The pattern is restricted to the upper hemisphere (theta 0..90 degrees).
+//     Below the ground plane (theta > 90), gain is set to -100 dB.
+//
+// For directivity calculation, the total radiated power is computed by
+// integrating |E|^2 over the upper hemisphere and then doubling it. This
+// doubling accounts for the mirror symmetry: the ground plane reflects all
+// downward radiation upward, so the total power equals twice the upper
+// hemisphere integral. The directivity formula D = 4pi*|E_max|^2 / P_total
+// then correctly yields the ground-plane gain enhancement.
 func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex128, k float64) ([]PatternPoint, float64) {
 	const (
-		thetaStep = 2.0
-		phiStep   = 2.0
+		thetaStep = 2.0              // angular resolution (degrees)
+		phiStep   = 2.0              // angular resolution (degrees)
 		deg2rad   = math.Pi / 180.0
 	)
 
@@ -150,8 +184,8 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 	total := nTheta * nPhi
 
 	pattern := make([]PatternPoint, 0, total)
-	eSquared := make([]float64, 0, total)
-	thetaRads := make([]float64, 0, total)
+	eSquared := make([]float64, 0, total)  // |E|^2 at each sample point
+	thetaRads := make([]float64, 0, total) // theta in radians for integration
 	maxEsq := 0.0
 
 	for it := 0; it < nTheta; it++ {
@@ -168,15 +202,16 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 
 			var esq float64
 
-			// Only compute field in upper hemisphere (theta <= 90°)
+			// Only compute field in upper hemisphere; below ground is zero
 			if theta <= 90.0 {
+				// Spherical coordinate unit vectors
 				rHat := [3]float64{sinTheta * cosPhi, sinTheta * sinPhi, cosTheta}
 				thetaHat := [3]float64{cosTheta * cosPhi, cosTheta * sinPhi, -sinTheta}
 				phiHat := [3]float64{-sinPhi, cosPhi, 0}
 
 				var eTheta, ePhi complex128
 
-				// Sum contributions from real segments
+				// Sum contributions from real (physical) segments
 				for n, seg := range realSegs {
 					if n >= len(currents) {
 						break
@@ -192,7 +227,8 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 					ePhi += moment * complex(dPhi, 0)
 				}
 
-				// Sum contributions from image segments (same currents)
+				// Sum contributions from image segments (below ground, same currents,
+				// direction already modified by ApplyPerfectGround)
 				for n, seg := range imageSegs {
 					if n >= len(currents) {
 						break
@@ -222,7 +258,9 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 		}
 	}
 
-	// Integrate |E|² over upper hemisphere only, then double for ground symmetry
+	// Integrate |E|^2 over the upper hemisphere for radiated power.
+	// Since only theta <= 90 has nonzero |E|^2, the sum naturally covers
+	// only the upper hemisphere even though we loop over all entries.
 	dTheta := thetaStep * deg2rad
 	dPhi := phiStep * deg2rad
 	upperPower := 0.0
@@ -230,9 +268,12 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 		sinTheta := math.Sin(thetaRads[idx])
 		upperPower += esq * sinTheta * dTheta * dPhi
 	}
-	// Total radiated power = 2 × upper hemisphere (perfect ground mirror symmetry)
+	// Double the upper-hemisphere power to get total radiated power:
+	// the PEC ground reflects the lower hemisphere's radiation upward,
+	// so by symmetry P_total = 2 * P_upper.
 	totalPower := 2.0 * upperPower
 
+	// Compute directivity and per-direction gain (same formula as free-space)
 	var gainDBi float64
 	if totalPower > 1e-30 {
 		directivityMax := 4.0 * math.Pi * maxEsq / totalPower
@@ -245,7 +286,7 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 			if d > 1e-30 {
 				pattern[idx].GainDB = 10.0 * math.Log10(d)
 			} else {
-				pattern[idx].GainDB = -100.0
+				pattern[idx].GainDB = -100.0 // floor for below-ground or negligible radiation
 			}
 		}
 	}

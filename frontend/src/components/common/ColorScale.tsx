@@ -1,8 +1,16 @@
+/**
+ * Vertical colour-scale legend for the radiation pattern viewer.
+ *
+ * Renders a CSS linear-gradient bar (red at top / high gain, blue at bottom /
+ * low gain) with labelled min, midpoint, and max values.  Designed to be
+ * overlaid on the 3D canvas as an absolute-positioned element.
+ */
 import React from 'react';
 
 interface ColorScaleProps {
   minValue: number;
   maxValue: number;
+  /** Label shown above the gradient bar (default: "Gain (dBi)"). */
   label?: string;
 }
 

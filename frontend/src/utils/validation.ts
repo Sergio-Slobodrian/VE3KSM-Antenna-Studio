@@ -1,5 +1,10 @@
+/**
+ * Client-side validation for antenna geometry and frequency settings.
+ * Returns null when valid, or an error message string when invalid.
+ */
 import type { Wire, FrequencyConfig } from '@/types';
 
+/** Validate a single wire: checks for zero-length, bad radius, and segment count. */
 export function validateWire(wire: Wire): string | null {
   if (
     wire.x1 === wire.x2 &&
@@ -20,6 +25,7 @@ export function validateWire(wire: Wire): string | null {
   return null;
 }
 
+/** Validate frequency config: positive values, sane ranges, sweep ordering. */
 export function validateFrequency(freq: FrequencyConfig): string | null {
   if (freq.mode === 'single') {
     if (freq.frequencyMhz <= 0) {

@@ -1,3 +1,12 @@
+/**
+ * Current distribution display.
+ *
+ * Shows the MoM-computed current on each wire segment in two forms:
+ *  - A bar chart of current magnitude (Amps) vs segment index.
+ *  - A scrollable table with magnitude and phase columns.
+ *
+ * Data comes from a single-frequency simulation (not sweep).
+ */
 import React, { useMemo } from 'react';
 import {
   BarChart,

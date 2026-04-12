@@ -1,3 +1,10 @@
+/**
+ * Header toolbar.
+ *
+ * Contains the app title, template selector dropdown, and the Simulate / Sweep
+ * action buttons.  Orchestrates the full request lifecycle: validation, API
+ * call, result storage, and error handling.
+ */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import {
@@ -22,6 +29,7 @@ const Header: React.FC = () => {
     setError,
   } = useAntennaStore();
 
+  /** Run a single-frequency simulation after validating inputs. */
   const handleSimulate = async () => {
     const freqError = validateFrequency(frequency);
     if (freqError) {
@@ -46,6 +54,7 @@ const Header: React.FC = () => {
     }
   };
 
+  /** Run a frequency sweep; forces sweep-mode validation regardless of UI mode. */
   const handleSweep = async () => {
     const freqError = validateFrequency({ ...frequency, mode: 'sweep' });
     if (freqError) {

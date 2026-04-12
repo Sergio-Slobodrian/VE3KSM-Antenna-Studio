@@ -73,11 +73,13 @@ All frontend-backend communication is **synchronous HTTP REST** (JSON request/re
 ```
 backend/
 ├── cmd/
-│   └── server/
-│       └── main.go              # Entry point: wires up Gin, config, starts server
+│   ├── server/
+│   │   └── main.go              # Entry point: wires up Gin, config, starts server
+│   └── launcher/
+│       └── main.go              # Process launcher: starts backend + frontend together
 ├── internal/
 │   ├── api/
-│   │   ├── handlers.go          # HTTP handler functions (Simulate, Sweep)
+│   │   ├── handlers.go          # HTTP handler functions (Simulate, Sweep, Templates)
 │   │   ├── middleware.go         # CORS, request logging, recovery
 │   │   ├── request.go           # Request DTOs + validation
 │   │   └── response.go          # Response DTOs + serialization helpers
@@ -86,14 +88,14 @@ backend/
 │   │   ├── ground.go            # Ground plane config (free-space, perfect, real)
 │   │   └── templates.go         # Preset antenna geometries (dipole, Yagi, etc.)
 │   ├── mom/
-│   │   ├── segment.go           # Wire → segment subdivision (piecewise-linear basis)
-│   │   ├── zmatrix.go           # N×N complex impedance matrix assembly
-│   │   ├── green.go             # Free-space Green's function & Pocklington kernel
-│   │   ├── quadrature.go        # Gauss-Legendre quadrature (wraps gonum)
-│   │   ├── solver.go            # LU decomposition solve (Z·I = V)
-│   │   ├── farfield.go          # Far-field E(θ,φ), gain, directivity
-│   │   ├── ground_image.go      # Image theory for perfect ground plane
-│   │   └── ground_sommerfeld.go # Sommerfeld integral for real ground (Phase 2)
+│   │   ├── types.go             # Solver data structures (SimulationInput, SolverResult, etc.)
+│   │   ├── segment.go           # Wire → segment subdivision
+│   │   ├── green.go             # Green's function, triangle basis kernel (MPIE)
+│   │   ├── quadrature.go        # Gauss-Legendre quadrature
+│   │   ├── zmatrix.go           # EM constants, legacy pulse-basis matrix (unused)
+│   │   ├── solver.go            # Main pipeline: triangle basis, Z-matrix, LU solve
+│   │   ├── farfield.go          # Far-field E(θ,φ), gain (free-space + ground)
+│   │   └── ground_image.go      # Image theory for perfect ground plane
 │   └── config/
 │       └── config.go            # Server config (port, CORS origins, solver defaults)
 ├── go.mod
@@ -124,16 +126,29 @@ backend/
                     └───────────┬─────────────┘
                                 │
                     ┌───────────▼────────────┐
-                    │  3. Build Z-Matrix      │
-                    │  (N_total × N_total)    │
+                    │  3. Build Triangle      │
+                    │  Basis Functions        │
                     │                         │
-                    │  For each (i,j) pair:   │
-                    │  - Compute mutual Z via │
-                    │    Pocklington kernel    │
-                    │  - Use Gauss-Legendre   │
-                    │    quadrature (16-32 pt) │
-                    │  - Self-terms (i==j):   │
-                    │    reduced kernel approx│
+                    │  N-1 interior nodes per │
+                    │  wire (rooftop basis)   │
+                    │  I=0 at wire endpoints  │
+                    └───────────┬─────────────┘
+                                │
+                    ┌───────────▼────────────┐
+                    │  4. Build Z-Matrix      │
+                    │  (M × M, M = Σ(N-1))   │
+                    │                         │
+                    │  MPIE formulation:      │
+                    │  - Vector potential:    │
+                    │    triangle-weighted    │
+                    │    double integral of ψ │
+                    │  - Scalar potential:    │
+                    │    charge density ×     │
+                    │    double integral of ψ │
+                    │  - Gauss-Legendre       │
+                    │    quadrature (8-16 pt) │
+                    │  - Self-terms: reduced  │
+                    │    kernel + higher order│
                     │                         │
                     │  If ground == perfect:  │
                     │  - Add image segment    │
@@ -141,21 +156,22 @@ backend/
                     └───────────┬─────────────┘
                                 │
                     ┌───────────▼────────────┐
-                    │  4. Build V Vector      │
+                    │  5. Build V Vector      │
                     │                         │
                     │  V = [0, 0, ..., Vs,    │
                     │       ..., 0]           │
                     │  Vs = source voltage at │
                     │  the designated feed    │
-                    │  segment                │
+                    │  basis node             │
                     └───────────┬─────────────┘
                                 │
                     ┌───────────▼────────────┐
-                    │  5. LU Solve: Z·I = V  │
+                    │  6. LU Solve: Z·I = V  │
                     │                         │
-                    │  gonum/mat CDense LU    │
+                    │  2N×2N real system via  │
+                    │  gonum/mat LU decomp    │
                     │  → complex current      │
-                    │    vector I             │
+                    │    coefficients I       │
                     └───────────┬─────────────┘
                                 │
                     ┌───────────▼────────────┐
@@ -249,26 +265,35 @@ type PatternPoint struct {
 
 ### 3.4 Z-Matrix Assembly — Algorithm Detail
 
-The impedance matrix is the computational core. For segments `i` and `j`:
+The impedance matrix uses the **Mixed Potential Integral Equation (MPIE)** with **triangle (rooftop) basis functions**. Triangle basis was chosen over pulse basis because pulse basis creates delta-function charges at segment endpoints that produce divergent self-potentials for thin wires, making the impedance matrix ill-conditioned.
+
+Each matrix element `Z[m][n]` between triangle basis functions `m` and `n` is:
 
 ```
-Z[i][j] = (jωμ/4π) ∫∫ [ ŝᵢ·ŝⱼ G(R) - (1/k²)(∂²G/∂z²) ] ds' ds
+Z[m][n] = jωμ/(4π) · A_mn  +  1/(jωε·4π) · Φ_mn
+```
+
+**Vector potential term** (A_mn):
+```
+A_mn = Σ_{a∈m} Σ_{b∈n} (ŝa·ŝb) ∫∫ φ_m(s)·φ_n(s')·ψ(R) ds ds'
+```
+
+**Scalar potential term** (Φ_mn):
+```
+Φ_mn = Σ_{a∈m} Σ_{b∈n} ρ_a·ρ_b ∫∫ ψ(R) ds ds'
 ```
 
 Where:
-- `G(R) = e^{-jkR} / R` is the free-space Green's function
-- `R = |r - r'|` distance between observation and source points
-- `k = 2πf/c` is the wavenumber
-- `ŝᵢ, ŝⱼ` are unit direction vectors of segments i, j
+- `ψ(R) = e^{-jkR} / R` is the reduced Green's function
+- `φ_m, φ_n` are piecewise-linear current shape functions (triangle basis)
+- `ρ_a, ρ_b` are piecewise-constant charge densities (`±1/Δl`)
+- The sums are over the 1–2 segments that each basis function spans
 
 **Implementation approach**:
-1. Use the **thin-wire Pocklington kernel** (exact kernel is computationally expensive)
-2. For the outer integral (observation segment `i`): use N-point Gauss-Legendre quadrature
-3. For the inner integral (source segment `j`): use M-point Gauss-Legendre quadrature
-4. **Self-terms** (`i == j`): replace `R` with `sqrt(R² + a²)` where `a` is wire radius (reduced kernel)
-5. Quadrature order: 16 points for off-diagonal, 32 points for self-terms
-
-**Parallelization**: The Z-matrix is symmetric (`Z[i][j] = Z[j][i]`), so only compute the upper triangle. Each row/element is independent — use `goroutines` with a worker pool (bounded to `runtime.NumCPU()`) to parallelize row computation.
+1. Each basis function spans up to 2 segments → up to 4 segment-pair integrals per `Z[m][n]`
+2. Double Gauss-Legendre quadrature per segment pair (8 points standard, 16 for self-terms)
+3. **Self-terms**: use reduced kernel `R = sqrt(r² + a²)` where `a` = wire radius
+4. **Parallelization**: goroutine worker pool (`runtime.NumCPU()` workers) fills the matrix concurrently
 
 ### 3.5 Far-Field Computation
 
@@ -281,6 +306,8 @@ E(θ,φ) = Σᵢ Iᵢ · Δlᵢ · ŝᵢ × (ŝᵢ × r̂) · e^{jk(r̂·rᵢ)} 
 Simplification: compute on a unit sphere (`r = 1`, drop the `1/r` for pattern shape).
 
 **Angular grid**: Default to 2° resolution → 91 θ values × 181 φ values = 16,471 points. Return as a flat array of `PatternPoint` structs for the frontend to render.
+
+**Ground plane**: `ComputeFarFieldWithGround` adds image segment contributions to the far-field sum, restricts the pattern to the upper hemisphere (θ ≤ 90°), and doubles the integrated power for the directivity calculation (mirror symmetry).
 
 ### 3.6 Frequency Sweep
 
@@ -414,6 +441,7 @@ interface AntennaStore {
 
   // --- UI State ---
   selectedWireId: string | null;
+  displayUnit: DisplayUnit;    // 'meters' | 'feet' | 'inches' | 'cm' | 'mm'
   isSimulating: boolean;
   error: string | null;
 
@@ -477,9 +505,10 @@ interface AntennaStore {
 
 **Features**:
 - X-axis: frequency (MHz)
-- Y-axis: SWR (linear scale, range 1.0 to max, clamp at 10)
-- Horizontal reference line at SWR = 2.0 (dashed, labeled "2:1")
-- Tooltip showing exact SWR and frequency on hover
+- Y-axis: auto-switches between linear and **log scale** when the SWR range exceeds 10:1
+- Log scale uses custom ticks at meaningful values (1, 2, 5, 10, 50, 100, 1k, 10k)
+- Reference lines at SWR 2:1 (orange dashed) and 3:1 (grey dashed)
+- Tooltip shows the actual unclamped SWR value on hover
 - Responsive sizing
 
 #### 4.3.4 ImpedanceChart
@@ -487,9 +516,9 @@ interface AntennaStore {
 **Purpose**: Plot R (resistance) and X (reactance) vs. frequency.
 
 **Features**:
-- Dual Y-axis or overlaid traces: R in solid line, X in dashed line
+- **Dual Y-axes**: R (orange, left axis) and X (cyan dashed, right axis) scale independently — prevents large X values from squashing the R trace
 - X-axis: frequency (MHz)
-- Reference line at X = 0 (resonance indicator)
+- Reference line at X = 0 on the reactance axis (resonance indicator)
 - Tooltip with R + jX formatted display
 
 ### 4.4 API Client Layer
@@ -705,80 +734,62 @@ source: center segment
 ```
 antenna-studio/
 ├── frontend/
-│   ├── public/
 │   ├── src/
 │   │   ├── components/
 │   │   │   ├── layout/
-│   │   │   │   ├── Header.tsx
-│   │   │   │   ├── MainLayout.tsx
-│   │   │   │   └── StatusBar.tsx
+│   │   │   │   ├── Header.tsx             # Title, template selector, simulate/sweep buttons
+│   │   │   │   ├── MainLayout.tsx         # Resizable split panel with collapse toggle
+│   │   │   │   └── StatusBar.tsx          # Simulation status, impedance, SWR, gain
 │   │   │   ├── editor/
-│   │   │   │   ├── WireEditor.tsx          # Three.js 3D canvas
-│   │   │   │   ├── WireEditorControls.tsx  # View angle buttons, grid toggle
-│   │   │   │   └── WireEndpointHandle.tsx  # Draggable endpoint sphere
+│   │   │   │   └── WireEditor.tsx         # Three.js 3D canvas (Z-up → Y-up mapping)
 │   │   │   ├── input/
-│   │   │   │   ├── WireTable.tsx           # Wire geometry table
-│   │   │   │   ├── WireRow.tsx             # Single wire row
-│   │   │   │   ├── SourceConfig.tsx        # Feed point config
-│   │   │   │   ├── GroundConfig.tsx        # Ground type/params
-│   │   │   │   ├── FrequencyInput.tsx      # Frequency config
-│   │   │   │   └── TemplateSelector.tsx    # Preset antenna selector
+│   │   │   │   ├── WireTable.tsx          # Wire table with unit selector (m/ft/in/cm/mm)
+│   │   │   │   ├── WireRow.tsx            # Editable row with unit conversion
+│   │   │   │   ├── SourceConfig.tsx       # Feed point: wire, segment, voltage
+│   │   │   │   ├── GroundConfig.tsx       # Ground type + material params
+│   │   │   │   ├── FrequencyInput.tsx     # Single / sweep mode toggle
+│   │   │   │   └── TemplateSelector.tsx   # Preset antenna dropdown
 │   │   │   ├── results/
-│   │   │   │   ├── PatternViewer.tsx       # 3D radiation pattern
-│   │   │   │   ├── PatternViewer2D.tsx     # 2D polar cut views
-│   │   │   │   ├── SWRChart.tsx            # SWR vs frequency
-│   │   │   │   ├── ImpedanceChart.tsx      # R,X vs frequency
-│   │   │   │   └── CurrentDisplay.tsx      # Segment currents table/viz
+│   │   │   │   ├── PatternViewer.tsx      # 3D radiation pattern (BufferGeometry mesh)
+│   │   │   │   ├── SWRChart.tsx           # SWR vs frequency (auto log-scale)
+│   │   │   │   ├── ImpedanceChart.tsx     # R,X vs frequency (dual Y-axes)
+│   │   │   │   └── CurrentDisplay.tsx     # Segment currents bar chart + table
 │   │   │   └── common/
-│   │   │       ├── NumericInput.tsx        # Validated number input
-│   │   │       └── ColorScale.tsx          # Gain colormap legend
+│   │   │       ├── NumericInput.tsx        # Labeled number input
+│   │   │       └── ColorScale.tsx         # Gain colormap legend bar
 │   │   ├── store/
-│   │   │   └── antennaStore.ts             # Zustand store
+│   │   │   └── antennaStore.ts            # Zustand store (wires, source, ground, results, UI)
 │   │   ├── api/
-│   │   │   └── client.ts                   # Backend API calls
-│   │   ├── hooks/
-│   │   │   ├── useSimulation.ts            # Simulation trigger + state
-│   │   │   └── useThreeSetup.ts            # Shared Three.js scene setup
+│   │   │   └── client.ts                  # Backend API calls + camelCase↔snake_case mapping
 │   │   ├── utils/
-│   │   │   ├── conversions.ts              # Spherical↔Cartesian, dB↔linear
-│   │   │   └── validation.ts               # Client-side input validation
+│   │   │   ├── conversions.ts             # Spherical↔Cartesian, Z-up→Y-up, dB↔linear, units
+│   │   │   └── validation.ts              # Client-side wire/frequency validation
 │   │   ├── types/
-│   │   │   └── index.ts                    # Shared TypeScript interfaces
+│   │   │   └── index.ts                   # Shared interfaces, DisplayUnit, METERS_TO_UNIT
 │   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── index.html
-│   ├── vite.config.ts
+│   ├── vite.config.ts                      # React plugin, /api proxy to backend
 │   ├── tsconfig.json
+│   ├── nginx.conf                          # Production reverse proxy config
+│   ├── Dockerfile
 │   └── package.json
 │
 ├── backend/
-│   ├── cmd/server/main.go
+│   ├── cmd/
+│   │   ├── server/main.go                 # Gin HTTP server entry point
+│   │   └── launcher/main.go               # Process launcher (backend + frontend)
 │   ├── internal/
-│   │   ├── api/
-│   │   │   ├── handlers.go
-│   │   │   ├── middleware.go
-│   │   │   ├── request.go
-│   │   │   └── response.go
-│   │   ├── geometry/
-│   │   │   ├── wire.go
-│   │   │   ├── ground.go
-│   │   │   └── templates.go
-│   │   ├── mom/
-│   │   │   ├── segment.go
-│   │   │   ├── zmatrix.go
-│   │   │   ├── green.go
-│   │   │   ├── quadrature.go
-│   │   │   ├── solver.go
-│   │   │   ├── farfield.go
-│   │   │   ├── ground_image.go
-│   │   │   └── ground_sommerfeld.go
-│   │   └── config/
-│   │       └── config.go
+│   │   ├── api/                           # HTTP handlers, DTOs, middleware
+│   │   ├── geometry/                      # Wire validation, ground validation, 5 templates
+│   │   ├── mom/                           # MoM solver (triangle basis, MPIE, far-field)
+│   │   └── config/                        # Server configuration from env vars
+│   ├── Dockerfile
 │   ├── go.mod
 │   └── go.sum
 │
 ├── docker-compose.yml
-├── Makefile
+├── Makefile                                # run, dev-backend, dev-frontend, build, test
 ├── ARCHITECTURE.md
 └── README.md
 ```
@@ -842,41 +853,18 @@ antenna-studio/
 
 ### 9.1 Backend Testing
 
-**Unit tests** (per-package):
-- `mom/segment_test.go` — verify segment count, positions, lengths for known wires
-- `mom/green_test.go` — verify Green's function against analytical values at known distances
-- `mom/quadrature_test.go` — integrate known functions, verify accuracy to 10⁻¹⁰
-- `mom/zmatrix_test.go` — verify self-impedance of thin dipole matches King-Middleton formula
-- `mom/solver_test.go` — solve simple 1-wire system, verify current symmetry
-- `mom/farfield_test.go` — verify pattern of short dipole matches `sin²(θ)` shape
+**80 unit tests** across 4 packages, run with `go test ./...`:
 
-**Integration tests**:
-- Full pipeline test: submit a half-wave dipole at 300 MHz (λ=1m), verify:
-  - Feed impedance ≈ 73 + j42.5 Ω (±10%)
-  - SWR ≈ 1.96 at 50Ω reference (±10%)
-  - Gain ≈ 2.15 dBi (±0.5 dB)
-  - Pattern null at θ=0° (along wire axis)
-  - Pattern max at θ=90° (broadside)
+- `mom/solver_test.go` (4 tests) — half-wave dipole impedance/SWR/gain, Gauss-Legendre integration, wire subdivision, frequency sweep
+- `mom/mom_test.go` (26 tests) — Green's function, psi, dist with/without reduced kernel, TriangleKernel self/mutual terms, far-field sin²(θ) pattern + ground restriction, image theory for vertical/horizontal/diagonal wires, segment properties, quadrature accuracy/symmetry/caching
+- `geometry/geometry_test.go` (24 tests) — WireLength, ValidateWire (5 cases), ValidateGround (9 cases), GetTemplates count, all 5 template generators with default + custom params + error cases
+- `api/api_test.go` (13 tests) — SimulateRequest.Validate (10 validation cases), SweepRequest.ToSimulateRequest conversion, SolverResultToResponse + SweepResultToResponse field mapping
+- `config/config_test.go` (3 tests) — default config, PORT override, CORS_ORIGINS parsing
 
-**Benchmark tests**:
-- Z-matrix assembly time for N = 50, 100, 200 segments
-- Full solve time including far-field for typical antenna sizes
-
-### 9.2 Frontend Testing
-
-- Component tests (Vitest + React Testing Library) for WireTable, SourceConfig, GroundConfig
-- Store tests: verify state transitions for add/update/remove wire actions
-- API client tests: mock fetch, verify request shape and error handling
-- Visual regression: Storybook stories for chart components (optional)
-
-### 9.3 Reference Validation
-
-Validate solver output against known NEC2 results for:
-1. **Half-wave dipole** in free space
-2. **Quarter-wave vertical** over perfect ground
-3. **3-element Yagi** in free space
-
-Acceptable error margin: ±5% on impedance, ±0.5 dB on gain, ±5% on SWR.
+**Reference validation** (verified in tests):
+- Half-wave dipole at 300 MHz: R ≈ 83.5 Ω, X ≈ 42.0 Ω, gain = 2.15 dBi
+- Short dipole far-field: sin²(θ) pattern shape, null at poles, max at θ=90°
+- Pattern with ground: upper hemisphere only, gain > free-space gain
 
 ---
 
@@ -899,12 +887,17 @@ Acceptable error margin: ±5% on impedance, ±0.5 dB on gain, ±5% on SWR.
 
 ### Development
 
+**Single command** (recommended):
 ```bash
-# Terminal 1: Backend
-cd backend && go run ./cmd/server
+make run    # starts both backend + frontend via the launcher
+```
 
-# Terminal 2: Frontend
-cd frontend && npm run dev
+The launcher manages both processes, prefixes output with `[backend]`/`[frontend]`, and supports Ctrl+C to restart or double Ctrl+C to quit.
+
+**Separate terminals**:
+```bash
+cd backend && go run ./cmd/server    # Terminal 1
+cd frontend && npm run dev           # Terminal 2
 ```
 
 Vite dev server proxies `/api/*` to `localhost:8080` (configure in `vite.config.ts`).

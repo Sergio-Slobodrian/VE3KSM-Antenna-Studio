@@ -16,11 +16,25 @@ const SWRChart: React.FC = () => {
 
   const data = useMemo(() => {
     if (!sweepResult) return [];
-    return sweepResult.frequencies.map((freq, i) => ({
-      frequency: freq,
-      swr: sweepResult.swr[i],
-    }));
+    return sweepResult.frequencies.map((freq, i) => {
+      const raw = sweepResult.swr[i];
+      return {
+        frequency: freq,
+        swr: raw,
+        swrLog: Math.log10(Math.max(raw, 1)),
+      };
+    });
   }, [sweepResult]);
+
+  const { minSwr, maxSwr } = useMemo(() => {
+    if (data.length === 0) return { minSwr: 1, maxSwr: 10 };
+    let mn = Infinity, mx = 0;
+    for (const d of data) {
+      if (d.swr < mn) mn = d.swr;
+      if (d.swr > mx) mx = d.swr;
+    }
+    return { minSwr: mn, maxSwr: mx };
+  }, [data]);
 
   if (!sweepResult || data.length === 0) {
     return (
@@ -31,9 +45,26 @@ const SWRChart: React.FC = () => {
     );
   }
 
+  // Use log scale when the range spans more than 10x
+  const useLog = maxSwr / Math.max(minSwr, 1) > 10;
+
+  // For log scale: Y axis is log10(SWR)
+  // Generate nice tick values
+  const logTicks = [1, 2, 3, 5, 10, 20, 50, 100, 500, 1000, 10000];
+  const logTicksFiltered = logTicks.filter(
+    (t) => t >= Math.floor(minSwr) && t <= Math.min(maxSwr * 1.2, 100000)
+  );
+
   return (
     <div className="chart-container">
-      <h3>SWR vs Frequency</h3>
+      <h3>
+        SWR vs Frequency
+        {useLog && (
+          <span style={{ fontSize: '11px', color: '#aaa', marginLeft: 12, fontWeight: 400 }}>
+            (log scale)
+          </span>
+        )}
+      </h3>
       <ResponsiveContainer width="100%" height={400}>
         <LineChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
@@ -42,20 +73,51 @@ const SWRChart: React.FC = () => {
             stroke="#aaa"
             label={{ value: 'Frequency (MHz)', position: 'insideBottom', offset: -5, fill: '#aaa' }}
           />
-          <YAxis
-            domain={[1, 'auto']}
-            stroke="#aaa"
-            label={{ value: 'SWR', angle: -90, position: 'insideLeft', fill: '#aaa' }}
-          />
+          {useLog ? (
+            <YAxis
+              dataKey="swrLog"
+              stroke="#aaa"
+              domain={[0, 'auto']}
+              ticks={logTicksFiltered.map((t) => Math.log10(t))}
+              tickFormatter={(v: number) => {
+                const val = Math.pow(10, v);
+                if (val >= 1000) return `${(val / 1000).toFixed(0)}k`;
+                if (val >= 100) return val.toFixed(0);
+                return val.toFixed(val < 10 ? 1 : 0);
+              }}
+              label={{ value: 'SWR', angle: -90, position: 'insideLeft', fill: '#aaa' }}
+            />
+          ) : (
+            <YAxis
+              dataKey="swr"
+              domain={[1, Math.ceil(Math.min(maxSwr * 1.1, 50))]}
+              stroke="#aaa"
+              label={{ value: 'SWR', angle: -90, position: 'insideLeft', fill: '#aaa' }}
+            />
+          )}
           <Tooltip
             contentStyle={{ backgroundColor: '#2a2a3e', border: '1px solid #555', color: '#eee' }}
-            formatter={(value: number) => [value.toFixed(2), 'SWR']}
+            formatter={(_: unknown, name: string, entry: { payload: { swr: number } }) => {
+              const raw = entry.payload.swr;
+              const display = raw >= 999 ? `${raw.toFixed(0)}` : raw.toFixed(2);
+              return [`${display} : 1`, 'SWR'];
+            }}
             labelFormatter={(label: number) => `${label.toFixed(3)} MHz`}
           />
-          <ReferenceLine y={2} stroke="#ff8844" strokeDasharray="5 5" label={{ value: 'SWR 2.0', fill: '#ff8844' }} />
+          <ReferenceLine
+            y={useLog ? Math.log10(2) : 2}
+            stroke="#ff8844"
+            strokeDasharray="5 5"
+            label={{ value: '2:1', fill: '#ff8844', fontSize: 11 }}
+          />
+          <ReferenceLine
+            y={useLog ? Math.log10(3) : 3}
+            stroke="#666"
+            strokeDasharray="2 4"
+          />
           <Line
             type="monotone"
-            dataKey="swr"
+            dataKey={useLog ? 'swrLog' : 'swr'}
             stroke="#44aaff"
             strokeWidth={2}
             dot={false}

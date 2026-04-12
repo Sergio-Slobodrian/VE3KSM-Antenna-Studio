@@ -51,35 +51,12 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	var bases []TriangleBasis
 	wireBasisOffsets := make([]int, len(input.Wires))
 
-	// Determine which wire endpoints need basis functions (not forced to I=0).
-	// An endpoint gets a basis if:
-	//   - It's the feed point (source segment is 0 or N-1)
-	//   - It's at the ground plane (z ≈ 0) with perfect ground
-	srcWire := input.Source.WireIndex
-	srcSeg := input.Source.SegmentIndex
-	isGrounded := input.Ground.Type == "perfect"
-
 	for wi := range input.Wires {
 		wireBasisOffsets[wi] = len(bases)
 		off := wireSegOffsets[wi]
 		nSeg := wireSegCounts[wi]
 
-		// Check if wire start (node 0) should be an unknown
-		seg0 := &allSegments[off]
-		startIsGround := isGrounded && math.Abs(seg0.Start[2]) < 1e-6
-		startIsFeed := wi == srcWire && srcSeg == 0
-		if startIsGround || startIsFeed {
-			bases = append(bases, TriangleBasis{
-				NodeIndex:       len(bases),
-				NodePos:         seg0.Start,
-				SegLeft:         nil,
-				SegRight:        seg0,
-				ChargeDensLeft:  0,
-				ChargeDensRight: 1.0 / (2.0 * seg0.HalfLength),
-			})
-		}
-
-		// Interior nodes 1..N-1: always full triangle basis
+		// Interior nodes 1..N-1: full triangle basis (wire tips forced to I=0)
 		for ni := 1; ni < nSeg; ni++ {
 			segLeft := &allSegments[off+ni-1]
 			segRight := &allSegments[off+ni]
@@ -92,21 +69,6 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 				ChargeDensRight: 1.0 / (2.0 * segRight.HalfLength),
 			})
 		}
-
-		// Check if wire end (node N) should be an unknown
-		segN := &allSegments[off+nSeg-1]
-		endIsGround := isGrounded && math.Abs(segN.End[2]) < 1e-6
-		endIsFeed := wi == srcWire && srcSeg == nSeg-1
-		if endIsGround || endIsFeed {
-			bases = append(bases, TriangleBasis{
-				NodeIndex:       len(bases),
-				NodePos:         segN.End,
-				SegLeft:         segN,
-				SegRight:        nil,
-				ChargeDensLeft:  -1.0 / (2.0 * segN.HalfLength),
-				ChargeDensRight: 0,
-			})
-		}
 	}
 
 	nBasis := len(bases)
@@ -115,7 +77,7 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	}
 
 	// Step 3: Determine feed basis index
-	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets, allSegments, bases)
+	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +134,16 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	segCurrents := interpolateSegmentCurrents(I, bases, allSegments, wireSegOffsets, wireSegCounts)
 
 	// Step 11: Far-field pattern and gain
-	pattern, gainDBi := ComputeFarField(allSegments, segCurrents, k)
+	// For perfect ground, include image segments in far-field and restrict to upper hemisphere
+	var pattern []PatternPoint
+	var gainDBi float64
+	if input.Ground.Type == "perfect" {
+		imageSegs := ApplyPerfectGround(allSegments)
+		// Image currents: same magnitude, direction already handled by ApplyPerfectGround
+		pattern, gainDBi = ComputeFarFieldWithGround(allSegments, imageSegs, segCurrents, k)
+	} else {
+		pattern, gainDBi = ComputeFarField(allSegments, segCurrents, k)
+	}
 
 	// Step 12: Build output currents
 	currents := make([]CurrentEntry, len(allSegments))
@@ -305,9 +276,11 @@ func interpolateSegmentCurrents(basisCurrents []complex128, bases []TriangleBasi
 	return segI
 }
 
-// resolveFeedBasis finds the basis function closest to the feed segment.
-// It searches the bases array for the node adjacent to the source segment.
-func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []int, wireBasisOffsets []int, allSegments []Segment, bases []TriangleBasis) (int, error) {
+// resolveFeedBasis converts wire/segment source indices to a basis function index.
+// Interior nodes are numbered 1..N-1 for a wire with N segments, mapped to
+// basis indices starting at wireBasisOffsets[wire]. Segment segIdx maps to the
+// nearest interior node: node max(1, segIdx) for base feed, min(N-1, segIdx+1) for tip.
+func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []int, wireBasisOffsets []int) (int, error) {
 	if src.WireIndex < 0 || src.WireIndex >= len(wires) {
 		return 0, fmt.Errorf("source wire_index %d out of range", src.WireIndex)
 	}
@@ -317,31 +290,21 @@ func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []
 		return 0, fmt.Errorf("source segment_index %d out of range [0, %d)", segIdx, nSeg)
 	}
 
-	off := wireSegOffsets[src.WireIndex]
-	feedSeg := &allSegments[off+segIdx]
-
-	// Find the basis whose node is closest to the feed segment center
-	bestIdx := -1
-	bestDist := math.MaxFloat64
-	for i, b := range bases {
-		// Check if this basis touches the feed segment
-		if (b.SegLeft != nil && b.SegLeft.Index == feedSeg.Index) ||
-			(b.SegRight != nil && b.SegRight.Index == feedSeg.Index) {
-			dx := b.NodePos[0] - feedSeg.Center[0]
-			dy := b.NodePos[1] - feedSeg.Center[1]
-			dz := b.NodePos[2] - feedSeg.Center[2]
-			d := dx*dx + dy*dy + dz*dz
-			if d < bestDist {
-				bestDist = d
-				bestIdx = i
-			}
-		}
+	// Interior node closest to segment segIdx.
+	// Node i (1-based) is between segments i-1 and i.
+	// Segment segIdx is bounded by node segIdx (start) and node segIdx+1 (end).
+	// Use the node at the higher index (closer to segment center for interior segments).
+	nodeIdx := segIdx + 1
+	if nodeIdx < 1 {
+		nodeIdx = 1
+	}
+	if nodeIdx > nSeg-1 {
+		nodeIdx = nSeg - 1
 	}
 
-	if bestIdx < 0 {
-		return 0, fmt.Errorf("could not find basis function for feed segment %d on wire %d", segIdx, src.WireIndex)
-	}
-	return bestIdx, nil
+	// Basis index: node 1 = basis offset+0, node 2 = basis offset+1, etc.
+	basisIdx := wireBasisOffsets[src.WireIndex] + (nodeIdx - 1)
+	return basisIdx, nil
 }
 
 // Sweep runs the MoM solver across a frequency range.

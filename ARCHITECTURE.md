@@ -14,43 +14,47 @@ The system is a monorepo with two primary components:
 
 ### 2.1 High-Level Diagram
 
-```
-┌──────────────────────────────────────────────────────────┐
-│                     Browser (SPA)                        │
-│                                                          │
-│  ┌──────────────┐  ┌───────────────┐  ┌──────────────┐  │
-│  │ WireEditor   │  │ PatternViewer │  │ SWRChart     │  │
-│  │ (Three.js)   │  │ (Three.js)    │  │ (Recharts)   │  │
-│  └──────┬───────┘  └───────┬───────┘  └──────┬───────┘  │
-│         │                  │                  │          │
-│  ┌──────▼──────────────────▼──────────────────▼───────┐  │
-│  │              Zustand Store                         │  │
-│  │  - wires[], source, ground, frequency              │  │
-│  │  - simulationResult, sweepResult                   │  │
-│  │  - uiState (selected wire, view mode)              │  │
-│  └──────────────────────┬─────────────────────────────┘  │
-│                         │                                │
-│  ┌──────────────────────▼─────────────────────────────┐  │
-│  │              API Client (fetch)                     │  │
-│  │  POST /api/simulate  |  POST /api/sweep            │  │
-│  └──────────────────────┬─────────────────────────────┘  │
-└─────────────────────────┼────────────────────────────────┘
-                          │ HTTP/JSON
-┌─────────────────────────▼────────────────────────────────┐
-│                    Go Backend (Gin)                       │
-│                                                          │
-│  ┌─────────────┐    ┌────────────────────────────────┐   │
-│  │ API Layer   │───▶│ MoM Solver Pipeline            │   │
-│  │ (handlers,  │    │                                │   │
-│  │  validation)│    │  Geometry ──▶ Z-Matrix ──▶ LU  │   │
-│  └─────────────┘    │  ──▶ Currents ──▶ Far-Field    │   │
-│                     └────────────────────────────────┘   │
-│                              │                           │
-│                     ┌────────▼───────┐                   │
-│                     │ gonum (matrix  │                   │
-│                     │ ops, LU decomp)│                   │
-│                     └────────────────┘                   │
-└──────────────────────────────────────────────────────────┘
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f0fe', 'primaryTextColor': '#1a1a2e', 'primaryBorderColor': '#4a6fa5', 'lineColor': '#4a6fa5', 'secondaryColor': '#f0f4e8', 'tertiaryColor': '#fff8e8', 'background': '#ffffff', 'mainBkg': '#e8f0fe', 'nodeBorder': '#4a6fa5', 'clusterBkg': '#f8f9fa', 'clusterBorder': '#6c757d', 'titleColor': '#1a1a2e', 'edgeLabelBackground': '#ffffff'}}}%%
+graph TB
+    subgraph Browser["Browser (SPA)"]
+        direction TB
+        subgraph Views["Visualization Components"]
+            WE["WireEditor<br/>(Three.js)"]
+            PV["PatternViewer<br/>(Three.js)"]
+            SC["SWRChart<br/>(Recharts)"]
+        end
+        subgraph Store["Zustand Store"]
+            SD["wires[], source, ground, frequency<br/>simulationResult, sweepResult<br/>uiState (selectedWire, displayUnit)"]
+        end
+        subgraph API["API Client (fetch)"]
+            AC["POST /api/simulate<br/>POST /api/sweep"]
+        end
+        Views --> Store
+        Store --> API
+    end
+
+    API -->|"HTTP / JSON"| Backend
+
+    subgraph Backend["Go Backend (Gin)"]
+        direction TB
+        AL["API Layer<br/>(handlers, validation)"]
+        subgraph Solver["MoM Solver Pipeline"]
+            direction LR
+            G["Geometry"] --> Z["Z-Matrix"] --> LU["LU Solve"]
+            LU --> C["Currents"] --> FF["Far-Field"]
+        end
+        GN["gonum<br/>(matrix ops, LU decomp)"]
+        AL --> Solver
+        Solver --> GN
+    end
+
+    style Browser fill:#f8f9fa,stroke:#6c757d,stroke-width:2px,color:#1a1a2e
+    style Backend fill:#f0f4e8,stroke:#5a7a3a,stroke-width:2px,color:#1a1a2e
+    style Views fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a2e
+    style Store fill:#fff8e8,stroke:#c4950a,color:#1a1a2e
+    style API fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a2e
+    style Solver fill:#eaf5ea,stroke:#5a7a3a,color:#1a1a2e
 ```
 
 ### 2.2 Communication Protocol
@@ -104,97 +108,38 @@ backend/
 
 ### 3.2 Solver Pipeline — Detailed Flow
 
-```
-                         Input: SimulateRequest
-                                │
-                    ┌───────────▼────────────┐
-                    │  1. Validate Geometry   │
-                    │  - Wire lengths > 0     │
-                    │  - Radius > 0           │
-                    │  - Segments ≥ 1 (odd)   │
-                    │  - Source on valid seg   │
-                    └───────────┬─────────────┘
-                                │
-                    ┌───────────▼────────────┐
-                    │  2. Subdivide Wires     │
-                    │  into Segments          │
-                    │                         │
-                    │  Each wire with N segs  │
-                    │  → N segment structs    │
-                    │  with center, endpoints,│
-                    │  half-length, direction  │
-                    └───────────┬─────────────┘
-                                │
-                    ┌───────────▼────────────┐
-                    │  3. Build Triangle      │
-                    │  Basis Functions        │
-                    │                         │
-                    │  N-1 interior nodes per │
-                    │  wire (rooftop basis)   │
-                    │  I=0 at wire endpoints  │
-                    └───────────┬─────────────┘
-                                │
-                    ┌───────────▼────────────┐
-                    │  4. Build Z-Matrix      │
-                    │  (M × M, M = Σ(N-1))   │
-                    │                         │
-                    │  MPIE formulation:      │
-                    │  - Vector potential:    │
-                    │    triangle-weighted    │
-                    │    double integral of ψ │
-                    │  - Scalar potential:    │
-                    │    charge density ×     │
-                    │    double integral of ψ │
-                    │  - Gauss-Legendre       │
-                    │    quadrature (8-16 pt) │
-                    │  - Self-terms: reduced  │
-                    │    kernel + higher order│
-                    │                         │
-                    │  If ground == perfect:  │
-                    │  - Add image segment    │
-                    │    contributions        │
-                    └───────────┬─────────────┘
-                                │
-                    ┌───────────▼────────────┐
-                    │  5. Build V Vector      │
-                    │                         │
-                    │  V = [0, 0, ..., Vs,    │
-                    │       ..., 0]           │
-                    │  Vs = source voltage at │
-                    │  the designated feed    │
-                    │  basis node             │
-                    └───────────┬─────────────┘
-                                │
-                    ┌───────────▼────────────┐
-                    │  6. LU Solve: Z·I = V  │
-                    │                         │
-                    │  2N×2N real system via  │
-                    │  gonum/mat LU decomp    │
-                    │  → complex current      │
-                    │    coefficients I       │
-                    └───────────┬─────────────┘
-                                │
-                    ┌───────────▼────────────┐
-                    │  6. Compute Results     │
-                    │                         │
-                    │  a) Feed impedance:     │
-                    │     Z_in = V_s / I_s    │
-                    │                         │
-                    │  b) SWR:                │
-                    │     Γ = (Z-50)/(Z+50)   │
-                    │     SWR=(1+|Γ|)/(1-|Γ|) │
-                    │                         │
-                    │  c) Far-field E(θ,φ):   │
-                    │     Sum segment currents │
-                    │     × phase factor      │
-                    │     over (θ,φ) grid     │
-                    │                         │
-                    │  d) Gain (dBi):         │
-                    │     4π|E|²_max /        │
-                    │     ∫∫|E|² sinθ dθ dφ   │
-                    └───────────┬─────────────┘
-                                │
-                         Output: SimulateResponse
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#e8f0fe', 'primaryTextColor': '#1a1a2e', 'primaryBorderColor': '#4a6fa5', 'lineColor': '#4a6fa5', 'background': '#ffffff', 'nodeBorder': '#4a6fa5', 'edgeLabelBackground': '#ffffff'}}}%%
+flowchart TD
+    IN(["SimulateRequest"])
+    V1["1. Validate Geometry<br/>Wire lengths > 0, radius > 0<br/>Segments ≥ 3 (odd), valid source"]
+    V2["2. Subdivide Wires<br/>Each wire → N segments with<br/>center, endpoints, half-length, direction"]
+    V3["3. Build Triangle Basis<br/>N−1 interior nodes per wire (rooftop)<br/>I = 0 at wire endpoints"]
+    V4["4. Build Z-Matrix (M × M)<br/>MPIE: vector potential (triangle-weighted ∫∫ψ)<br/>+ scalar potential (charge × ∫∫ψ)<br/>Gauss-Legendre quadrature (8–16 pt)<br/>Self-terms: reduced kernel + higher order"]
+    V4G{"Ground<br/>== perfect?"}
+    V4I["Add image segment<br/>contributions to Z"]
+    V5["5. Build V Vector<br/>V = [0, …, Vs, …, 0]<br/>Vs at feed basis node"]
+    V6["6. LU Solve: Z·I = V<br/>2N×2N real system via gonum LU<br/>→ complex current coefficients"]
+    V7["7. Compute Results<br/>a) Z_in = Vs / I_feed<br/>b) SWR = (1+|Γ|) / (1−|Γ|)<br/>c) Far-field E(θ,φ) on 2° grid<br/>d) Gain = 4π|E_max|² / P_rad"]
+    OUT(["SimulateResponse"])
+
+    IN --> V1 --> V2 --> V3 --> V4
+    V4 --> V4G
+    V4G -->|Yes| V4I --> V5
+    V4G -->|No| V5
+    V5 --> V6 --> V7 --> OUT
+
+    style IN fill:#fff8e8,stroke:#c4950a,color:#1a1a2e
+    style OUT fill:#eaf5ea,stroke:#5a7a3a,color:#1a1a2e
+    style V1 fill:#fef0f0,stroke:#c44a4a,color:#1a1a2e
+    style V2 fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a2e
+    style V3 fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a2e
+    style V4 fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a2e
+    style V4G fill:#fff8e8,stroke:#c4950a,color:#1a1a2e
+    style V4I fill:#f0f4e8,stroke:#5a7a3a,color:#1a1a2e
+    style V5 fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a2e
+    style V6 fill:#f3e8fe,stroke:#7a4aa5,color:#1a1a2e
+    style V7 fill:#eaf5ea,stroke:#5a7a3a,color:#1a1a2e
 ```
 
 ### 3.3 Core Data Structures

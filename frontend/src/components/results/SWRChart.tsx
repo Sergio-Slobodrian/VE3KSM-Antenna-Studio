@@ -18,7 +18,7 @@ const SWRChart: React.FC = () => {
     if (!sweepResult) return [];
     return sweepResult.frequencies.map((freq, i) => ({
       frequency: freq,
-      swr: Math.min(sweepResult.swr[i], 10),
+      swr: sweepResult.swr[i],
     }));
   }, [sweepResult]);
 
@@ -43,7 +43,7 @@ const SWRChart: React.FC = () => {
             label={{ value: 'Frequency (MHz)', position: 'insideBottom', offset: -5, fill: '#aaa' }}
           />
           <YAxis
-            domain={[1, 10]}
+            domain={[1, 'auto']}
             stroke="#aaa"
             label={{ value: 'SWR', angle: -90, position: 'insideLeft', fill: '#aaa' }}
           />

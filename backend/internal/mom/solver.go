@@ -4,21 +4,13 @@ import (
 	"fmt"
 	"math"
 	"math/cmplx"
+	"runtime"
+	"sync"
 
 	"gonum.org/v1/gonum/mat"
 )
 
-// Simulate runs the full MoM simulation pipeline for a single frequency:
-//  1. Subdivide all wires into segments
-//  2. Determine the global feed segment index
-//  3. Compute k = 2*pi*f/c, omega = 2*pi*f
-//  4. Build the impedance matrix Z
-//  5. Build the voltage excitation vector V
-//  6. Solve Z*I = V via LU decomposition
-//  7. Compute feed impedance Z_in = V_source / I_feed
-//  8. Compute SWR relative to 50 ohms
-//  9. Compute far-field radiation pattern and gain
-//  10. Extract segment current magnitudes and phases
+// Simulate runs the full MoM simulation using triangle (rooftop) basis functions.
 func Simulate(input SimulationInput) (*SolverResult, error) {
 	if len(input.Wires) == 0 {
 		return nil, fmt.Errorf("no wires provided")
@@ -29,13 +21,19 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 
 	// Step 1: Subdivide all wires into segments
 	var allSegments []Segment
-	wireSegmentOffsets := make([]int, len(input.Wires))
+	wireSegOffsets := make([]int, len(input.Wires)) // first segment index per wire
+	wireSegCounts := make([]int, len(input.Wires))  // number of segments per wire
 	for wi, w := range input.Wires {
-		wireSegmentOffsets[wi] = len(allSegments)
+		wireSegOffsets[wi] = len(allSegments)
 		numSeg := w.Segments
-		if numSeg < 1 {
-			numSeg = 11
+		if numSeg < 3 {
+			numSeg = 3 // minimum 3 segments for triangle basis (need at least 1 interior node)
 		}
+		// Ensure odd number for center feed
+		if numSeg%2 == 0 {
+			numSeg++
+		}
+		wireSegCounts[wi] = numSeg
 		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
@@ -43,57 +41,123 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		allSegments = append(allSegments, segs...)
 	}
 
-	n := len(allSegments)
-	if n == 0 {
+	nSeg := len(allSegments)
+	if nSeg == 0 {
 		return nil, fmt.Errorf("no segments generated")
 	}
 
-	// Step 2: Determine global feed segment index
-	feedGlobal, err := resolveSourceSegment(input.Source, input.Wires)
+	// Step 2: Build triangle basis functions at interior nodes
+	// For wire w with N segments: interior nodes at indices 1..N-1 (between segments)
+	var bases []TriangleBasis
+	wireBasisOffsets := make([]int, len(input.Wires))
+
+	// Determine which wire endpoints need basis functions (not forced to I=0).
+	// An endpoint gets a basis if:
+	//   - It's the feed point (source segment is 0 or N-1)
+	//   - It's at the ground plane (z ≈ 0) with perfect ground
+	srcWire := input.Source.WireIndex
+	srcSeg := input.Source.SegmentIndex
+	isGrounded := input.Ground.Type == "perfect"
+
+	for wi := range input.Wires {
+		wireBasisOffsets[wi] = len(bases)
+		off := wireSegOffsets[wi]
+		nSeg := wireSegCounts[wi]
+
+		// Check if wire start (node 0) should be an unknown
+		seg0 := &allSegments[off]
+		startIsGround := isGrounded && math.Abs(seg0.Start[2]) < 1e-6
+		startIsFeed := wi == srcWire && srcSeg == 0
+		if startIsGround || startIsFeed {
+			bases = append(bases, TriangleBasis{
+				NodeIndex:       len(bases),
+				NodePos:         seg0.Start,
+				SegLeft:         nil,
+				SegRight:        seg0,
+				ChargeDensLeft:  0,
+				ChargeDensRight: 1.0 / (2.0 * seg0.HalfLength),
+			})
+		}
+
+		// Interior nodes 1..N-1: always full triangle basis
+		for ni := 1; ni < nSeg; ni++ {
+			segLeft := &allSegments[off+ni-1]
+			segRight := &allSegments[off+ni]
+			bases = append(bases, TriangleBasis{
+				NodeIndex:       len(bases),
+				NodePos:         segLeft.End,
+				SegLeft:         segLeft,
+				SegRight:        segRight,
+				ChargeDensLeft:  -1.0 / (2.0 * segLeft.HalfLength),
+				ChargeDensRight: 1.0 / (2.0 * segRight.HalfLength),
+			})
+		}
+
+		// Check if wire end (node N) should be an unknown
+		segN := &allSegments[off+nSeg-1]
+		endIsGround := isGrounded && math.Abs(segN.End[2]) < 1e-6
+		endIsFeed := wi == srcWire && srcSeg == nSeg-1
+		if endIsGround || endIsFeed {
+			bases = append(bases, TriangleBasis{
+				NodeIndex:       len(bases),
+				NodePos:         segN.End,
+				SegLeft:         segN,
+				SegRight:        nil,
+				ChargeDensLeft:  -1.0 / (2.0 * segN.HalfLength),
+				ChargeDensRight: 0,
+			})
+		}
+	}
+
+	nBasis := len(bases)
+	if nBasis == 0 {
+		return nil, fmt.Errorf("no basis functions (need at least 3 segments per wire)")
+	}
+
+	// Step 3: Determine feed basis index
+	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets, allSegments, bases)
 	if err != nil {
 		return nil, err
 	}
 
-	// Resolve voltage
 	voltage := input.Source.Voltage
 	if cmplx.Abs(voltage) == 0 {
 		voltage = 1 + 0i
 	}
 
-	// Step 3: Frequency parameters
+	// Step 4: Frequency parameters
 	freq := input.Frequency
 	omega := 2.0 * math.Pi * freq
 	k := omega / C0
 
-	// Step 4: Build impedance matrix
-	Z := BuildZMatrix(allSegments, k, omega)
+	// Step 5: Build impedance matrix using triangle basis
+	Z := buildTriangleZMatrix(bases, allSegments, k, omega)
 
-	// Step 4b: Apply ground plane contributions
+	// Step 5b: Ground plane
 	if input.Ground.Type == "perfect" {
 		imageSegs := ApplyPerfectGround(allSegments)
-		AddGroundContributions(Z, allSegments, imageSegs, k, omega)
+		addGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega)
 	}
 
-	// Step 5: Build voltage vector (all zeros except at feed)
-	V := make([]complex128, n)
-	V[feedGlobal] = voltage
+	// Step 6: Build voltage vector
+	V := make([]complex128, nBasis)
+	V[feedBasis] = voltage
 
-	// Step 6: Solve Z*I = V using LU decomposition
-	// Convert to 2N x 2N real system since gonum lacks complex LU
-	I, err := solveComplexLU(Z, V, n)
+	// Step 7: Solve Z·I = V
+	I, err := solveComplexLU(Z, V, nBasis)
 	if err != nil {
 		return nil, fmt.Errorf("solver failed: %w", err)
 	}
 
-	// Step 7: Compute feed impedance
-	feedCurrent := I[feedGlobal]
+	// Step 8: Compute feed impedance
+	feedCurrent := I[feedBasis]
 	var impedance ComplexImpedance
 	if cmplx.Abs(feedCurrent) > 1e-30 {
 		zIn := voltage / feedCurrent
 		impedance = ComplexImpedance{R: real(zIn), X: imag(zIn)}
 	}
 
-	// Step 8: Compute SWR (50-ohm reference)
+	// Step 9: Compute SWR (50-ohm reference)
 	zComplex := complex(impedance.R, impedance.X)
 	gamma := (zComplex - 50) / (zComplex + 50)
 	gammaAbs := cmplx.Abs(gamma)
@@ -104,12 +168,15 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		swr = 999.0
 	}
 
-	// Step 9: Far-field pattern and gain
-	pattern, gainDBi := ComputeFarField(allSegments, I, k)
+	// Step 10: Interpolate segment currents from basis node currents
+	segCurrents := interpolateSegmentCurrents(I, bases, allSegments, wireSegOffsets, wireSegCounts)
 
-	// Step 10: Extract currents
-	currents := make([]CurrentEntry, n)
-	for i, c := range I {
+	// Step 11: Far-field pattern and gain
+	pattern, gainDBi := ComputeFarField(allSegments, segCurrents, k)
+
+	// Step 12: Build output currents
+	currents := make([]CurrentEntry, len(allSegments))
+	for i, c := range segCurrents {
 		currents[i] = CurrentEntry{
 			SegmentIndex: i,
 			Magnitude:    cmplx.Abs(c),
@@ -126,8 +193,158 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	}, nil
 }
 
+// buildTriangleZMatrix assembles the impedance matrix using triangle basis.
+func buildTriangleZMatrix(bases []TriangleBasis, segments []Segment, k, omega float64) *mat.CDense {
+	n := len(bases)
+	Z := mat.NewCDense(n, n, nil)
+
+	// Prefactors
+	// Vector potential: jωμ/(4π)
+	vecPrefactor := complex(0, omega*Mu0/(4.0*math.Pi))
+	// Scalar potential: 1/(jωε·4π) = -jωμ/(4πk²)
+	k2 := k * k
+	scaPrefactor := -complex(0, omega*Mu0/(4.0*math.Pi*k2))
+
+	numWorkers := runtime.NumCPU()
+	if numWorkers < 1 {
+		numWorkers = 1
+	}
+
+	type job struct{ i, j int }
+	jobs := make(chan job, 256)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for jb := range jobs {
+				vecTerm, scaTerm := TriangleKernel(bases[jb.i], bases[jb.j], k, omega, segments)
+				val := vecPrefactor*vecTerm + scaPrefactor*scaTerm
+				mu.Lock()
+				Z.Set(jb.i, jb.j, val)
+				mu.Unlock()
+			}
+		}()
+	}
+
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			jobs <- job{i, j}
+		}
+	}
+	close(jobs)
+	wg.Wait()
+
+	return Z
+}
+
+// addGroundTriangleBasis adds perfect ground image contributions to the Z matrix.
+func addGroundTriangleBasis(Z *mat.CDense, bases []TriangleBasis, realSegs, imageSegs []Segment, k, omega float64) {
+	// Build image basis functions corresponding to each real basis
+	imageBases := make([]TriangleBasis, len(bases))
+	for i, b := range bases {
+		var imgLeft, imgRight *Segment
+		if b.SegLeft != nil {
+			s := imageSegs[b.SegLeft.Index]
+			imgLeft = &s
+		}
+		if b.SegRight != nil {
+			s := imageSegs[b.SegRight.Index]
+			imgRight = &s
+		}
+		imageBases[i] = TriangleBasis{
+			NodeIndex:       i,
+			NodePos:         [3]float64{b.NodePos[0], b.NodePos[1], -b.NodePos[2]},
+			SegLeft:         imgLeft,
+			SegRight:        imgRight,
+			ChargeDensLeft:  b.ChargeDensLeft,
+			ChargeDensRight: b.ChargeDensRight,
+		}
+	}
+
+	vecPrefactor := complex(0, omega*Mu0/(4.0*math.Pi))
+	k2 := k * k
+	scaPrefactor := -complex(0, omega*Mu0/(4.0*math.Pi*k2))
+
+	n := len(bases)
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			vecTerm, scaTerm := TriangleKernel(bases[i], imageBases[j], k, omega, nil)
+			val := vecPrefactor*vecTerm + scaPrefactor*scaTerm
+			old := Z.At(i, j)
+			Z.Set(i, j, old+val)
+		}
+	}
+}
+
+// interpolateSegmentCurrents computes the current at each segment center
+// by interpolating from the triangle basis node currents.
+func interpolateSegmentCurrents(basisCurrents []complex128, bases []TriangleBasis, segments []Segment, wireSegOffsets, wireSegCounts []int) []complex128 {
+	segI := make([]complex128, len(segments))
+
+	for _, b := range bases {
+		idx := b.NodeIndex
+		if idx >= len(basisCurrents) {
+			continue
+		}
+		Ib := basisCurrents[idx]
+
+		// On the left segment: φ(center) = (center - start) / Δl
+		// center of segment is at midpoint, so φ(center) = 0.5
+		if b.SegLeft != nil {
+			segI[b.SegLeft.Index] += Ib * 0.5
+		}
+		// On the right segment: φ(center) = 0.5
+		if b.SegRight != nil {
+			segI[b.SegRight.Index] += Ib * 0.5
+		}
+	}
+
+	return segI
+}
+
+// resolveFeedBasis finds the basis function closest to the feed segment.
+// It searches the bases array for the node adjacent to the source segment.
+func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []int, wireBasisOffsets []int, allSegments []Segment, bases []TriangleBasis) (int, error) {
+	if src.WireIndex < 0 || src.WireIndex >= len(wires) {
+		return 0, fmt.Errorf("source wire_index %d out of range", src.WireIndex)
+	}
+	nSeg := wireSegCounts[src.WireIndex]
+	segIdx := src.SegmentIndex
+	if segIdx < 0 || segIdx >= nSeg {
+		return 0, fmt.Errorf("source segment_index %d out of range [0, %d)", segIdx, nSeg)
+	}
+
+	off := wireSegOffsets[src.WireIndex]
+	feedSeg := &allSegments[off+segIdx]
+
+	// Find the basis whose node is closest to the feed segment center
+	bestIdx := -1
+	bestDist := math.MaxFloat64
+	for i, b := range bases {
+		// Check if this basis touches the feed segment
+		if (b.SegLeft != nil && b.SegLeft.Index == feedSeg.Index) ||
+			(b.SegRight != nil && b.SegRight.Index == feedSeg.Index) {
+			dx := b.NodePos[0] - feedSeg.Center[0]
+			dy := b.NodePos[1] - feedSeg.Center[1]
+			dz := b.NodePos[2] - feedSeg.Center[2]
+			d := dx*dx + dy*dy + dz*dz
+			if d < bestDist {
+				bestDist = d
+				bestIdx = i
+			}
+		}
+	}
+
+	if bestIdx < 0 {
+		return 0, fmt.Errorf("could not find basis function for feed segment %d on wire %d", segIdx, src.WireIndex)
+	}
+	return bestIdx, nil
+}
+
 // Sweep runs the MoM solver across a frequency range.
-// freqStartHz and freqEndHz are in Hz. steps is the number of frequency points.
 func Sweep(input SimulationInput, freqStartHz, freqEndHz float64, steps int) (*SweepResult, error) {
 	if steps < 2 {
 		return nil, fmt.Errorf("frequency sweep requires at least 2 steps")
@@ -143,7 +360,7 @@ func Sweep(input SimulationInput, freqStartHz, freqEndHz float64, steps int) (*S
 
 	for i := 0; i < steps; i++ {
 		freq := freqStartHz + float64(i)*stepSize
-		result.Frequencies[i] = freq / 1e6 // store as MHz
+		result.Frequencies[i] = freq / 1e6
 
 		stepInput := input
 		stepInput.Frequency = freq
@@ -160,39 +377,7 @@ func Sweep(input SimulationInput, freqStartHz, freqEndHz float64, steps int) (*S
 	return result, nil
 }
 
-// resolveSourceSegment converts wire-relative source indices to a global segment index.
-func resolveSourceSegment(src Source, wires []Wire) (int, error) {
-	if src.WireIndex < 0 || src.WireIndex >= len(wires) {
-		return 0, fmt.Errorf("source wire_index %d out of range [0, %d)", src.WireIndex, len(wires))
-	}
-	w := wires[src.WireIndex]
-	numSeg := w.Segments
-	if numSeg < 1 {
-		numSeg = 11
-	}
-	if src.SegmentIndex < 0 || src.SegmentIndex >= numSeg {
-		return 0, fmt.Errorf("source segment_index %d out of range [0, %d)", src.SegmentIndex, numSeg)
-	}
-
-	global := 0
-	for i := 0; i < src.WireIndex; i++ {
-		ns := wires[i].Segments
-		if ns < 1 {
-			ns = 11
-		}
-		global += ns
-	}
-	global += src.SegmentIndex
-	return global, nil
-}
-
-// solveComplexLU solves the complex linear system Z*I = V by converting to
-// a 2N x 2N real system and using gonum's LU decomposition.
-//
-// The equivalent real system is:
-//
-//	[Re(Z)  -Im(Z)] [Re(I)]   [Re(V)]
-//	[Im(Z)   Re(Z)] [Im(I)] = [Im(V)]
+// solveComplexLU solves Z*I = V via the 2N×2N real system.
 func solveComplexLU(Z *mat.CDense, V []complex128, n int) ([]complex128, error) {
 	A := mat.NewDense(2*n, 2*n, nil)
 	b := mat.NewVecDense(2*n, nil)
@@ -202,11 +387,10 @@ func solveComplexLU(Z *mat.CDense, V []complex128, n int) ([]complex128, error) 
 			z := Z.At(i, j)
 			re := real(z)
 			im := imag(z)
-
-			A.Set(i, j, re)       // top-left: Re(Z)
-			A.Set(i, n+j, -im)    // top-right: -Im(Z)
-			A.Set(n+i, j, im)     // bottom-left: Im(Z)
-			A.Set(n+i, n+j, re)   // bottom-right: Re(Z)
+			A.Set(i, j, re)
+			A.Set(i, n+j, -im)
+			A.Set(n+i, j, im)
+			A.Set(n+i, n+j, re)
 		}
 		b.SetVec(i, real(V[i]))
 		b.SetVec(n+i, imag(V[i]))
@@ -220,7 +404,6 @@ func solveComplexLU(Z *mat.CDense, V []complex128, n int) ([]complex128, error) 
 		return nil, fmt.Errorf("LU solve failed: %w", err)
 	}
 
-	// Reconstruct complex solution
 	I := make([]complex128, n)
 	for i := 0; i < n; i++ {
 		I[i] = complex(x.AtVec(i), x.AtVec(n+i))

@@ -1,10 +1,10 @@
 /**
  * Impedance vs Frequency chart (Recharts line chart).
  *
- * Plots resistance R (solid orange) and reactance X (dashed cyan) on a shared
- * Y axis in Ohms.  A zero-reference line helps identify the resonant frequency
- * where X crosses zero.  The tooltip shows both R and X with the formatted
- * complex impedance string.
+ * Uses dual Y-axes so resistance R and reactance X can scale independently.
+ * R (solid orange) is on the left axis, X (dashed cyan) on the right.
+ * This prevents large X values from squashing the R trace to the zero line.
+ * A zero-reference line on the right axis helps identify resonance (X = 0).
  */
 import React, { useMemo } from 'react';
 import {
@@ -46,21 +46,30 @@ const ImpedanceChart: React.FC = () => {
     <div className="chart-container">
       <h3>Impedance vs Frequency</h3>
       <ResponsiveContainer width="100%" height={400}>
-        <LineChart data={data} margin={{ top: 10, right: 30, left: 10, bottom: 10 }}>
+        <LineChart data={data} margin={{ top: 10, right: 60, left: 10, bottom: 10 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#333" />
           <XAxis
             dataKey="frequency"
             stroke="#aaa"
             label={{ value: 'Frequency (MHz)', position: 'insideBottom', offset: -5, fill: '#aaa' }}
           />
+          {/* Left Y-axis for Resistance (R) */}
           <YAxis
-            stroke="#aaa"
-            label={{ value: 'Ohms', angle: -90, position: 'insideLeft', fill: '#aaa' }}
+            yAxisId="left"
+            stroke="#ff6644"
+            label={{ value: 'R (Ω)', angle: -90, position: 'insideLeft', fill: '#ff6644' }}
+          />
+          {/* Right Y-axis for Reactance (X) */}
+          <YAxis
+            yAxisId="right"
+            orientation="right"
+            stroke="#44ccff"
+            label={{ value: 'X (Ω)', angle: 90, position: 'insideRight', fill: '#44ccff' }}
           />
           <Tooltip
             contentStyle={{ backgroundColor: '#2a2a3e', border: '1px solid #555', color: '#eee' }}
             formatter={(_value: number, name: string, props: { payload: { R: number; X: number } }) => {
-              if (name === 'R') return [props.payload.R.toFixed(1) + ' \u03A9', 'R'];
+              if (name === 'R (Resistance)') return [props.payload.R.toFixed(1) + ' \u03A9', 'R'];
               return [props.payload.X.toFixed(1) + ' \u03A9', 'X'];
             }}
             labelFormatter={(label: number) => {
@@ -70,8 +79,10 @@ const ImpedanceChart: React.FC = () => {
             }}
           />
           <Legend />
-          <ReferenceLine y={0} stroke="#666" strokeDasharray="3 3" />
+          {/* Zero reference on the reactance axis to show resonance crossing */}
+          <ReferenceLine yAxisId="right" y={0} stroke="#44ccff" strokeDasharray="3 3" strokeOpacity={0.5} />
           <Line
+            yAxisId="left"
             type="monotone"
             dataKey="R"
             stroke="#ff6644"
@@ -80,6 +91,7 @@ const ImpedanceChart: React.FC = () => {
             name="R (Resistance)"
           />
           <Line
+            yAxisId="right"
             type="monotone"
             dataKey="X"
             stroke="#44ccff"

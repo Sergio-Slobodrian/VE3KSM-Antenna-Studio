@@ -141,7 +141,7 @@ const SceneContent: React.FC = () => {
 const WireEditor: React.FC = () => {
   return (
     <div className="editor-container">
-      <Canvas camera={{ position: [10, 10, 10], fov: 50 }}>
+      <Canvas camera={{ position: [10, 10, 10], fov: 50, near: 0.01, far: 10000 }}>
         <SceneContent />
       </Canvas>
     </div>

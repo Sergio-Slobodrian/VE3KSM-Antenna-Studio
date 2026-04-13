@@ -155,7 +155,7 @@ const PatternViewer: React.FC = () => {
 
   return (
     <div className="editor-container" style={{ position: 'relative' }}>
-      <Canvas camera={{ position: [5, 5, 5], fov: 50 }}>
+      <Canvas camera={{ position: [5, 5, 5], fov: 50, near: 0.01, far: 10000 }}>
         <ambientLight intensity={0.4} />
         <directionalLight position={[5, 10, 5]} intensity={0.7} />
         <PatternMesh />

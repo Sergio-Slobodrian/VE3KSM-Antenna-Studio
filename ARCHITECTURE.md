@@ -99,7 +99,8 @@ backend/
 │   │   ├── zmatrix.go           # EM constants, legacy pulse-basis matrix (unused)
 │   │   ├── solver.go            # Main pipeline: triangle basis, Z-matrix, LU solve
 │   │   ├── farfield.go          # Far-field E(θ,φ), gain (free-space + ground)
-│   │   └── ground_image.go      # Image theory for perfect ground plane
+│   │   ├── ground_image.go      # Image theory for perfect ground plane
+│   │   └── ground_real.go       # Lossy ground: Fresnel reflection coefficients
 │   └── config/
 │       └── config.go            # Server config (port, CORS origins, solver defaults)
 ├── go.mod
@@ -116,8 +117,8 @@ flowchart TD
     V2["2. Subdivide Wires<br/>Each wire → N segments with<br/>center, endpoints, half-length, direction"]
     V3["3. Build Triangle Basis<br/>N−1 interior nodes per wire (rooftop)<br/>I = 0 at wire endpoints"]
     V4["4. Build Z-Matrix (M × M)<br/>MPIE: vector potential (triangle-weighted ∫∫ψ)<br/>+ scalar potential (charge × ∫∫ψ)<br/>Gauss-Legendre quadrature (8–16 pt)<br/>Self-terms: reduced kernel + higher order"]
-    V4G{"Ground<br/>== perfect?"}
-    V4I["Add image segment<br/>contributions to Z"]
+    V4G{"Ground<br/>type?"}
+    V4I["Add image contributions<br/>perfect: unity reflection<br/>real: Fresnel Rv/Rh coefficients"]
     V5["5. Build V Vector<br/>V = [0, …, Vs, …, 0]<br/>Vs at feed basis node"]
     V6["6. LU Solve: Z·I = V<br/>2N×2N real system via gonum LU<br/>→ complex current coefficients"]
     V7["7. Compute Results<br/>a) Z_in = Vs / I_feed<br/>b) SWR = (1+|Γ|) / (1−|Γ|)<br/>c) Far-field E(θ,φ) on 2° grid<br/>d) Gain = 4π|E_max|² / P_rad"]
@@ -125,8 +126,8 @@ flowchart TD
 
     IN --> V1 --> V2 --> V3 --> V4
     V4 --> V4G
-    V4G -->|Yes| V4I --> V5
-    V4G -->|No| V5
+    V4G -->|"perfect / real"| V4I --> V5
+    V4G -->|"free_space"| V5
     V5 --> V6 --> V7 --> OUT
 
     style IN fill:#fff8e8,stroke:#c4950a,color:#1a1a2e
@@ -252,7 +253,9 @@ Simplification: compute on a unit sphere (`r = 1`, drop the `1/r` for pattern sh
 
 **Angular grid**: Default to 2° resolution → 91 θ values × 181 φ values = 16,471 points. Return as a flat array of `PatternPoint` structs for the frontend to render.
 
-**Ground plane**: `ComputeFarFieldWithGround` adds image segment contributions to the far-field sum, restricts the pattern to the upper hemisphere (θ ≤ 90°), and doubles the integrated power for the directivity calculation (mirror symmetry).
+**Ground plane**: For any non-free-space ground, the pattern is restricted to the upper hemisphere (θ ≤ 90°). Image segment contributions are added to the far-field sum:
+- **Perfect ground** (`ComputeFarFieldWithGround`): image contributes with unity reflection coefficient. Total power = upper hemisphere integral only (no doubling — the image field already appears in the upper hemisphere).
+- **Real ground** (`ComputeFarFieldRealGround`): image contributions scaled by angle-dependent Fresnel reflection coefficients Rv (vertical) and Rh (horizontal), blended by current orientation. Lossy ground absorbs power, so total power = upper hemisphere integral without doubling.
 
 ### 3.6 Frequency Sweep
 
@@ -279,9 +282,21 @@ For a perfect ground at `z = 0`:
 - Image currents are inverted for horizontal components, preserved for vertical
 - Add image segment contributions to the Z-matrix (doubles the integration work, but no additional unknowns)
 
-#### Phase 2: Real Ground (Sommerfeld Integrals)
+#### Phase 2: Real (Lossy) Ground — Fresnel Reflection Coefficients
 
-Deferred to a later phase. Requires numerical evaluation of Sommerfeld integrals which involve oscillatory infinite integrals — significantly more complex. Consider using lookup tables or asymptotic approximations.
+Implemented using the **reflection-coefficient image method** (same approach as MININEC/EZNEC). Instead of full Sommerfeld integration, each image contribution is scaled by an angle-dependent Fresnel coefficient:
+
+**Complex permittivity**: `εc = εr − jσ/(ωε₀)`
+
+**Fresnel coefficients** at grazing angle ψ:
+- Vertical (TM): `Rv = (εc·sinψ − √(εc − cos²ψ)) / (εc·sinψ + √(εc − cos²ψ))`
+- Horizontal (TE): `Rh = (sinψ − √(εc − cos²ψ)) / (sinψ + √(εc − cos²ψ))`
+
+**Z-matrix** (`addRealGroundTriangleBasis`): computes the quasi-static angle from the source-image geometry, blends Rv/Rh by current orientation, and scales the image kernel contribution by the effective reflection coefficient.
+
+**Far-field** (`ComputeFarFieldRealGround`): applies per-angle Fresnel coefficients to image segment contributions, with ψ = π/2 − θ.
+
+**Limits**: approaches perfect ground as σ → ∞ (validated in tests). Less accurate for horizontal wires within λ/10 of the ground surface.
 
 ---
 
@@ -294,30 +309,35 @@ Deferred to a later phase. Requires numerical evaluation of Sommerfeld integrals
 ├── <Header>
 │   ├── <ProjectName>
 │   ├── <TemplateSelector>          # Dropdown: Dipole, Yagi, Vertical, Loop, Custom
-│   └── <SimulateButton>            # Triggers POST /api/simulate
+│   ├── <SaveButton>                # Export design as JSON file
+│   ├── <LoadButton>                # Import design from JSON file
+│   ├── <SimulateButton>            # Single-frequency simulation
+│   └── <SweepButton>               # Frequency sweep
 │
-├── <MainLayout>                     # Resizable split panels
+├── <MainLayout>                     # Resizable split panels with collapse toggle
 │   ├── <LeftPanel>
-│   │   ├── <WireTable>             # Tabular wire geometry input
-│   │   │   ├── <WireRow>           # One row per wire (x1,y1,z1,x2,y2,z2,radius,segs)
+│   │   ├── <WireTable>             # Tabular wire input with unit selector (m/ft/in/cm/mm)
+│   │   │   ├── <WireRow>           # Editable row with unit conversion
 │   │   │   └── <AddWireButton>
 │   │   ├── <SourceConfig>          # Feed point: wire index, segment, voltage
-│   │   ├── <GroundConfig>          # Ground type selector + params
+│   │   ├── <GroundConfig>          # Ground type (free/perfect/real) + material params
 │   │   └── <FrequencyInput>        # Single freq or sweep range
 │   │
 │   └── <RightPanel>                 # Tabbed visualization area
 │       ├── <Tab: 3D Editor>
-│       │   └── <WireEditor>        # Three.js interactive 3D canvas
+│       │   └── <WireEditor>        # Three.js 3D canvas (Z-up → Y-up coord mapping)
 │       ├── <Tab: Radiation Pattern>
-│       │   └── <PatternViewer>     # Three.js 3D pattern sphere
+│       │   └── <PatternViewer>     # 3D pattern mesh (ground suppression, ground plane visual)
 │       ├── <Tab: SWR Chart>
-│       │   └── <SWRChart>          # Recharts line chart
+│       │   └── <SWRChart>          # Auto log-scale SWR vs frequency
 │       ├── <Tab: Impedance>
-│       │   └── <ImpedanceChart>    # R and X vs frequency
-│       └── <Tab: Currents>
-│           └── <CurrentDisplay>    # Segment current magnitudes
+│       │   └── <ImpedanceChart>    # R,X dual Y-axes vs frequency
+│       ├── <Tab: Currents>
+│       │   └── <CurrentDisplay>    # Segment current bar chart + table
+│       └── <Tab: Matching>
+│           └── <MatchingNetwork>   # L/Pi/Toroidal matching network designer
 │
-└── <StatusBar>                      # Simulation status, error messages
+└── <StatusBar>                      # Simulation status, impedance, SWR, gain
 ```
 
 ### 4.2 Zustand Store Design
@@ -465,6 +485,23 @@ interface AntennaStore {
 - X-axis: frequency (MHz)
 - Reference line at X = 0 on the reactance axis (resonance indicator)
 - Tooltip with R + jX formatted display
+
+#### 4.3.5 MatchingNetwork (Impedance Matching Designer)
+
+**Purpose**: Design matching networks to transform simulated antenna impedance to the transmitter impedance (configurable, default 50 Ω).
+
+**Network types** (selectable via sub-tabs):
+- **L-Network**: two solutions (low-pass and high-pass) with series/shunt topology, Q factor, bandwidth estimate, and ASCII schematic
+- **Pi-Network**: three-element shunt-series-shunt design with configurable Q
+- **Toroidal Transformer**: turns ratio calculation with recommended toroid cores (T-37 through T-106 iron powder, FT-37/50/82 ferrite), primary/secondary turns, and inductance values
+
+**Features**:
+- Antenna impedance sourced directly from the simulation result
+- All component values shown as exact AND nearest E12 standard values
+- Reactance cancellation notes when the antenna has significant jX
+- Core table with material type, turns count, inductance, and frequency range
+
+**Implementation**: Pure frontend calculation (`utils/matching.ts`) — no backend API needed. Uses the standard L-network design equations with Q-factor analysis.
 
 ### 4.4 API Client Layer
 
@@ -695,10 +732,11 @@ antenna-studio/
 │   │   │   │   ├── FrequencyInput.tsx     # Single / sweep mode toggle
 │   │   │   │   └── TemplateSelector.tsx   # Preset antenna dropdown
 │   │   │   ├── results/
-│   │   │   │   ├── PatternViewer.tsx      # 3D radiation pattern (BufferGeometry mesh)
+│   │   │   │   ├── PatternViewer.tsx      # 3D radiation pattern (ground suppression)
 │   │   │   │   ├── SWRChart.tsx           # SWR vs frequency (auto log-scale)
 │   │   │   │   ├── ImpedanceChart.tsx     # R,X vs frequency (dual Y-axes)
-│   │   │   │   └── CurrentDisplay.tsx     # Segment currents bar chart + table
+│   │   │   │   ├── CurrentDisplay.tsx     # Segment currents bar chart + table
+│   │   │   │   └── MatchingNetwork.tsx    # L/Pi/Toroidal impedance matching designer
 │   │   │   └── common/
 │   │   │       ├── NumericInput.tsx        # Labeled number input
 │   │   │       └── ColorScale.tsx         # Gain colormap legend bar
@@ -708,7 +746,8 @@ antenna-studio/
 │   │   │   └── client.ts                  # Backend API calls + camelCase↔snake_case mapping
 │   │   ├── utils/
 │   │   │   ├── conversions.ts             # Spherical↔Cartesian, Z-up→Y-up, dB↔linear, units
-│   │   │   └── validation.ts              # Client-side wire/frequency validation
+│   │   │   ├── validation.ts              # Client-side wire/frequency validation
+│   │   │   └── matching.ts               # Matching network calculator (L, Pi, toroidal)
 │   │   ├── types/
 │   │   │   └── index.ts                   # Shared interfaces, DisplayUnit, METERS_TO_UNIT
 │   │   ├── App.tsx
@@ -727,7 +766,7 @@ antenna-studio/
 │   ├── internal/
 │   │   ├── api/                           # HTTP handlers, DTOs, middleware
 │   │   ├── geometry/                      # Wire validation, ground validation, 5 templates
-│   │   ├── mom/                           # MoM solver (triangle basis, MPIE, far-field)
+│   │   ├── mom/                           # MoM solver (triangle basis, MPIE, far-field, Fresnel ground)
 │   │   └── config/                        # Server configuration from env vars
 │   ├── Dockerfile
 │   ├── go.mod
@@ -735,6 +774,7 @@ antenna-studio/
 │
 ├── docker-compose.yml
 ├── Makefile                                # run, dev-backend, dev-frontend, build, test
+├── kill-all.sh                             # Kill all running backend/frontend processes
 ├── ARCHITECTURE.md
 └── README.md
 ```
@@ -798,10 +838,11 @@ antenna-studio/
 
 ### 9.1 Backend Testing
 
-**80 unit tests** across 4 packages, run with `go test ./...`:
+**86 unit tests** across 4 packages, run with `go test ./...`:
 
 - `mom/solver_test.go` (4 tests) — half-wave dipole impedance/SWR/gain, Gauss-Legendre integration, wire subdivision, frequency sweep
 - `mom/mom_test.go` (26 tests) — Green's function, psi, dist with/without reduced kernel, TriangleKernel self/mutual terms, far-field sin²(θ) pattern + ground restriction, image theory for vertical/horizontal/diagonal wires, segment properties, quadrature accuracy/symmetry/caching
+- `mom/ground_real_test.go` (6 tests) — complex permittivity, Fresnel coefficient limits (perfect conductor, normal incidence, grazing angle), high-conductivity continuity with perfect ground, real vs perfect ground comparison
 - `geometry/geometry_test.go` (24 tests) — WireLength, ValidateWire (5 cases), ValidateGround (9 cases), GetTemplates count, all 5 template generators with default + custom params + error cases
 - `api/api_test.go` (13 tests) — SimulateRequest.Validate (10 validation cases), SweepRequest.ToSimulateRequest conversion, SolverResultToResponse + SweepResultToResponse field mapping
 - `config/config_test.go` (3 tests) — default config, PORT override, CORS_ORIGINS parsing
@@ -809,7 +850,8 @@ antenna-studio/
 **Reference validation** (verified in tests):
 - Half-wave dipole at 300 MHz: R ≈ 83.5 Ω, X ≈ 42.0 Ω, gain = 2.15 dBi
 - Short dipole far-field: sin²(θ) pattern shape, null at poles, max at θ=90°
-- Pattern with ground: upper hemisphere only, gain > free-space gain
+- Pattern with ground: upper hemisphere only, gain ≈ 5 dBi for quarter-wave monopole
+- Real ground high-conductivity limit matches perfect ground within 0.2 dB
 
 ---
 
@@ -876,13 +918,14 @@ services:
 
 ---
 
-## 12. Future Enhancements (Out of Scope for V1)
+## 12. Future Enhancements
 
 - **WebSocket progress**: Report % complete during long sweeps
-- **Real ground (Sommerfeld)**: Full Sommerfeld integral evaluation for lossy ground
 - **Wire loading**: Lumped loads (R, L, C) on segments
-- **Transmission lines**: Model feedlines and matching networks
+- **Transmission lines**: Model feedlines with loss and velocity factor
 - **Optimization**: Auto-tune wire lengths/positions to minimize SWR
 - **Multi-band sweep**: Discontinuous frequency ranges
+- **NEC2 import/export**: Read and write `.nec` deck files
+- **2D polar plots**: E-plane and H-plane pattern cuts
 - **NEC4 compatibility**: Extended thin-wire kernel, stepped-radius junctions
-- **User accounts & persistence**: Save designs to a database
+- **Full Sommerfeld integration**: For horizontal wires very close to lossy ground (within λ/10)

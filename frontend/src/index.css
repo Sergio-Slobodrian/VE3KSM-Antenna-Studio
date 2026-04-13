@@ -522,6 +522,156 @@ select {
   margin-bottom: 12px;
 }
 
+/* ========== Matching Network ========== */
+.matching-container {
+  padding: 16px;
+  overflow-y: auto;
+  height: 100%;
+}
+
+.matching-container h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+.match-header {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.match-impedances {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.match-impedances label {
+  color: var(--text-secondary);
+  margin-right: 8px;
+  min-width: 80px;
+  display: inline-block;
+}
+
+.match-impedances .match-value {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.match-swr {
+  margin-left: 12px;
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.match-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.match-solution {
+  margin-bottom: 20px;
+  padding: 12px;
+  background: var(--bg-input);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.match-solution h4 {
+  font-size: 13px;
+  color: var(--accent-secondary);
+  margin-bottom: 8px;
+}
+
+.match-solution h5 {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 12px 0 6px;
+}
+
+.match-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.match-component {
+  font-size: 13px;
+  margin: 4px 0;
+  color: var(--text-primary);
+}
+
+.match-type {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.match-value {
+  color: var(--accent-secondary);
+  font-weight: 600;
+}
+
+.match-std {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.match-reactance {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.match-note {
+  font-size: 12px;
+  color: var(--warning);
+  padding: 8px;
+  background: rgba(255, 170, 68, 0.1);
+  border-radius: 4px;
+  margin: 8px 0;
+}
+
+.match-schematic {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-secondary);
+  padding: 10px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 8px 0;
+  line-height: 1.4;
+}
+
+.match-core-table {
+  width: 100%;
+  font-size: 12px;
+  border-collapse: collapse;
+}
+
+.match-core-table th {
+  text-align: left;
+  padding: 4px 8px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.match-core-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+}
+
+.match-core-table tr:hover td {
+  background: var(--bg-hover);
+}
+
 /* ========== No Data Message ========== */
 .no-data-message {
   display: flex;

@@ -17,8 +17,9 @@ import PatternViewer from '@/components/results/PatternViewer';
 import SWRChart from '@/components/results/SWRChart';
 import ImpedanceChart from '@/components/results/ImpedanceChart';
 import CurrentDisplay from '@/components/results/CurrentDisplay';
+import MatchingNetwork from '@/components/results/MatchingNetwork';
 
-type Tab = '3d' | 'pattern' | 'swr' | 'impedance' | 'currents';
+type Tab = '3d' | 'pattern' | 'swr' | 'impedance' | 'currents' | 'matching';
 
 // Constraints for the draggable left-panel width (pixels)
 const MIN_PANEL_WIDTH = 200;
@@ -76,6 +77,7 @@ const MainLayout: React.FC = () => {
     { id: 'swr', label: 'SWR' },
     { id: 'impedance', label: 'Impedance' },
     { id: 'currents', label: 'Currents' },
+    { id: 'matching', label: 'Matching' },
   ];
 
   const renderTabContent = () => {
@@ -90,6 +92,8 @@ const MainLayout: React.FC = () => {
         return <ImpedanceChart />;
       case 'currents':
         return <CurrentDisplay />;
+      case 'matching':
+        return <MatchingNetwork />;
     }
   };
 

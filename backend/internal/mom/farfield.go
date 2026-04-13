@@ -268,10 +268,12 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 		sinTheta := math.Sin(thetaRads[idx])
 		upperPower += esq * sinTheta * dTheta * dPhi
 	}
-	// Double the upper-hemisphere power to get total radiated power:
-	// the PEC ground reflects the lower hemisphere's radiation upward,
-	// so by symmetry P_total = 2 * P_upper.
-	totalPower := 2.0 * upperPower
+	// For an antenna over a ground plane, ALL radiation exists in the upper
+	// hemisphere (the image creates reflected waves that appear above ground,
+	// not below). The total radiated power IS the upper hemisphere integral.
+	// No factor-of-2 doubling — the image contributions are already included
+	// in the field summation above.
+	totalPower := upperPower
 
 	// Compute directivity and per-direction gain (same formula as free-space)
 	var gainDBi float64

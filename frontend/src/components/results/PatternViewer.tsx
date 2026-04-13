@@ -21,14 +21,21 @@ import ColorScale from '@/components/common/ColorScale';
 /** Builds and renders the 3D radiation-pattern surface mesh. */
 const PatternMesh: React.FC = () => {
   const simulationResult = useAntennaStore((s) => s.simulationResult);
+  const groundType = useAntennaStore((s) => s.ground.type);
 
   const geometry = useMemo(() => {
     if (!simulationResult || simulationResult.pattern.length === 0) return null;
 
     const pattern = simulationResult.pattern;
-    const gains = pattern.map((p) => p.gainDb);
-    const minGain = Math.min(...gains);
-    const maxGain = Math.max(...gains);
+    // Filter out suppressed points (e.g. below ground at -100 dB) when computing
+    // the gain range, so they don't inflate the range and distort the radius mapping.
+    const SUPPRESSED_DB = -99;
+    const hasGround = groundType !== 'free_space';
+    const activeGains = pattern
+      .filter((p) => p.gainDb > SUPPRESSED_DB && !(hasGround && p.theta > 90))
+      .map((p) => p.gainDb);
+    const minGain = activeGains.length > 0 ? Math.min(...activeGains) : -10;
+    const maxGain = activeGains.length > 0 ? Math.max(...activeGains) : 0;
     const gainRange = maxGain - minGain || 1;
 
     // Extract sorted unique theta and phi values to form the grid axes
@@ -54,33 +61,57 @@ const PatternMesh: React.FC = () => {
     const colors: number[] = [];
     const indices: number[] = [];
 
+    // Track which vertices are suppressed (below ground) so we can skip
+    // triangles that would stretch from real lobes down to the origin.
+    const suppressed: boolean[] = [];
+
     // Generate vertices: radial distance from dB gain, colour from normalised gain
     for (let ti = 0; ti < thetas.length; ti++) {
       for (let pi = 0; pi < phis.length; pi++) {
         const theta = thetas[ti];
         const phi = phis[pi];
         const gain = gainMap.get(`${theta},${phi}`) ?? minGain;
-        const normalized = (gain - minGain) / gainRange;
-        // Log-power radius: ensures the lowest-gain points are still visible (offset +3 dB)
-        const r = Math.pow(10, (gain - minGain + 3) / 20) * 0.5;
 
-        const { x, y, z } = sphericalToCartesian(r, theta, phi);
-        positions.push(x, y, z);
+        // Suppress below-ground points: either backend flagged them as -100 dB,
+        // or a ground plane is configured and theta > 90° (below horizon).
+        // For "real" ground the Sommerfeld model is not yet implemented, so we
+        // suppress the lower hemisphere to avoid showing a misleading mirror image.
+        const isBelowGround = gain <= SUPPRESSED_DB ||
+          (groundType !== 'free_space' && theta > 90);
 
-        // HSL colour ramp: hue 0.66 (blue) at low gain down to 0 (red) at high gain
-        const color = new THREE.Color();
-        color.setHSL((1 - normalized) * 0.66, 1.0, 0.5);
-        colors.push(color.r, color.g, color.b);
+        if (isBelowGround) {
+          positions.push(0, 0, 0);
+          colors.push(0, 0, 0);
+          suppressed.push(true);
+        } else {
+          const normalized = (gain - minGain) / gainRange;
+          // Log-power radius: offset +3 dB so the weakest active lobe is still visible
+          const r = Math.pow(10, (gain - minGain + 3) / 20) * 0.5;
+
+          const { x, y, z } = sphericalToCartesian(r, theta, phi);
+          positions.push(x, y, z);
+
+          // HSL colour ramp: hue 0.66 (blue) at low gain down to 0 (red) at high gain
+          const color = new THREE.Color();
+          color.setHSL((1 - normalized) * 0.66, 1.0, 0.5);
+          colors.push(color.r, color.g, color.b);
+          suppressed.push(false);
+        }
       }
     }
 
-    // Generate triangle indices for each quad cell in the theta x phi grid
+    // Generate triangle indices, skipping any quad where a corner is suppressed.
+    // This prevents triangles stretching from above-ground lobes to the origin.
     for (let ti = 0; ti < thetas.length - 1; ti++) {
       for (let pi = 0; pi < phis.length - 1; pi++) {
         const a = ti * phis.length + pi;
         const b = a + 1;
         const c = (ti + 1) * phis.length + pi;
         const d = c + 1;
+
+        if (suppressed[a] || suppressed[b] || suppressed[c] || suppressed[d]) {
+          continue;
+        }
 
         indices.push(a, b, c);
         indices.push(b, d, c);
@@ -118,9 +149,9 @@ const PatternViewer: React.FC = () => {
     );
   }
 
-  const gains = simulationResult.pattern.map((p) => p.gainDb);
-  const minGain = Math.min(...gains);
-  const maxGain = Math.max(...gains);
+  const activeGains = simulationResult.pattern.map((p) => p.gainDb).filter((g) => g > -99);
+  const minGain = activeGains.length > 0 ? Math.min(...activeGains) : -10;
+  const maxGain = activeGains.length > 0 ? Math.max(...activeGains) : 0;
 
   return (
     <div className="editor-container" style={{ position: 'relative' }}>
@@ -128,6 +159,12 @@ const PatternViewer: React.FC = () => {
         <ambientLight intensity={0.4} />
         <directionalLight position={[5, 10, 5]} intensity={0.7} />
         <PatternMesh />
+        {useAntennaStore.getState().ground.type !== 'free_space' && (
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+            <planeGeometry args={[12, 12]} />
+            <meshStandardMaterial color="#556655" transparent opacity={0.2} side={THREE.DoubleSide} />
+          </mesh>
+        )}
         <axesHelper args={[3]} />
         <OrbitControls makeDefault />
       </Canvas>

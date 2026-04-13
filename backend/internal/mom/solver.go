@@ -114,11 +114,17 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	Z := buildTriangleZMatrix(bases, allSegments, k, omega)
 
 	// Step 5b: Add ground plane contributions via image theory.
-	// For a perfect ground (PEC at z=0), each segment has an image below the
-	// ground plane. The image contributions are added directly to Z.
-	if input.Ground.Type == "perfect" {
+	// Both perfect and real ground use geometric image segments; the difference
+	// is that real ground scales image contributions by Fresnel reflection
+	// coefficients (angle-dependent, lossy) instead of unity.
+	switch input.Ground.Type {
+	case "perfect":
 		imageSegs := ApplyPerfectGround(allSegments)
 		addGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega)
+	case "real":
+		imageSegs := ApplyPerfectGround(allSegments)
+		addRealGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega,
+			input.Ground.Conductivity, input.Ground.Permittivity)
 	}
 
 	// ---- Step 6: Build the excitation (voltage) vector ----
@@ -165,12 +171,18 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	// ---- Step 11: Far-field radiation pattern and peak directivity ----
 	var pattern []PatternPoint
 	var gainDBi float64
-	if input.Ground.Type == "perfect" {
-		// For perfect ground: sum real + image segment contributions,
-		// restrict pattern to upper hemisphere (theta 0..90 deg)
+	switch input.Ground.Type {
+	case "perfect":
+		// Perfect ground: image contributions with unity reflection, upper hemisphere only
 		imageSegs := ApplyPerfectGround(allSegments)
 		pattern, gainDBi = ComputeFarFieldWithGround(allSegments, imageSegs, segCurrents, k)
-	} else {
+	case "real":
+		// Real ground: image contributions scaled by Fresnel coefficients, upper hemisphere only
+		imageSegs := ApplyPerfectGround(allSegments)
+		pattern, gainDBi = ComputeFarFieldRealGround(allSegments, imageSegs, segCurrents, k, omega,
+			input.Ground.Conductivity, input.Ground.Permittivity)
+	default:
+		// Free space: full sphere
 		pattern, gainDBi = ComputeFarField(allSegments, segCurrents, k)
 	}
 

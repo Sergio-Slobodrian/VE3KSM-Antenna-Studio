@@ -1,37 +1,154 @@
 /**
  * 3D wire antenna editor using Three.js via react-three-fiber.
  *
- * Renders each wire as a cylinder between its two endpoints, with spheres at
- * the nodes.  A grid, axes helper, and optional ground plane are shown.
+ * Renders each wire as a cylinder between its two endpoints, with draggable
+ * spheres at the nodes. Dragging uses @react-three/drei's DragControls for
+ * reliable pointer tracking. The wire geometry is updated only on drag end
+ * to avoid per-frame store updates. Orbit controls are disabled while dragging.
  *
- * Coordinate mapping: The physics model uses Z-up, but Three.js uses Y-up.
- * The `physicsToThree` helper swaps Y<->Z so the 3D scene displays correctly.
- * Cylinders are created along the Y axis then rotated via quaternion to align
- * with the wire direction.
+ * Coordinate mapping: physics Z-up → Three.js Y-up via physicsToThree/threeToPhysics.
  */
-import React, { useRef, useMemo } from 'react';
-import { Canvas } from '@react-three/fiber';
+import React, { useRef, useMemo, useState, useCallback, useEffect } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, Line } from '@react-three/drei';
 import * as THREE from 'three';
 import { useAntennaStore } from '@/store/antennaStore';
 import { physicsToThree } from '@/utils/conversions';
 import type { Wire } from '@/types';
 
+/** Convert Three.js Y-up coords back to physics Z-up. */
+function threeToPhysics(tx: number, ty: number, tz: number): [number, number, number] {
+  return [tx, tz, ty];
+}
+
+// ── Draggable Endpoint ───────────────────────────────────────────────────────
+
+interface DragHandleProps {
+  initialPosition: [number, number, number];
+  color: string;
+  radius: number;
+  wireId: string;
+  endpoint: 'start' | 'end';
+  onDragStart: () => void;
+  onDragEnd: () => void;
+}
+
+/**
+ * Draggable sphere at a wire endpoint. Uses simple pointer-down/move/up on the
+ * canvas with a drag plane perpendicular to the camera. Updates are batched:
+ * only a local Three.js position changes during drag; the Zustand store is
+ * written once on pointer-up.
+ */
+const DragHandle: React.FC<DragHandleProps> = ({
+  initialPosition, color, radius, wireId, endpoint, onDragStart, onDragEnd,
+}) => {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const dragging = useRef(false);
+  const plane = useRef(new THREE.Plane());
+  const startWorld = useRef(new THREE.Vector3());
+  const startMeshPos = useRef(new THREE.Vector3());
+  const intersect = useRef(new THREE.Vector3());
+  const { camera, gl } = useThree();
+
+  // Sync mesh position when the store-driven prop changes (e.g., after load/template)
+  useEffect(() => {
+    if (meshRef.current && !dragging.current) {
+      meshRef.current.position.set(...initialPosition);
+    }
+  }, [initialPosition]);
+
+  const getPointerNDC = useCallback((e: PointerEvent): THREE.Vector2 => {
+    const rect = gl.domElement.getBoundingClientRect();
+    return new THREE.Vector2(
+      ((e.clientX - rect.left) / rect.width) * 2 - 1,
+      -((e.clientY - rect.top) / rect.height) * 2 + 1,
+    );
+  }, [gl]);
+
+  const onPointerDown = useCallback((e: any) => {
+    e.stopPropagation();
+    const pe = e.nativeEvent ?? e as PointerEvent;
+    dragging.current = true;
+    onDragStart();
+    gl.domElement.setPointerCapture(pe.pointerId);
+
+    // Set up a drag plane through the mesh position, facing the camera
+    const camDir = new THREE.Vector3();
+    camera.getWorldDirection(camDir);
+    const meshPos = meshRef.current!.position.clone();
+    plane.current.setFromNormalAndCoplanarPoint(camDir, meshPos);
+
+    // Record where the ray hits the plane (anchor) and the mesh position
+    const ndc = getPointerNDC(pe);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, camera);
+    ray.ray.intersectPlane(plane.current, startWorld.current);
+    startMeshPos.current.copy(meshPos);
+  }, [camera, gl, onDragStart, getPointerNDC]);
+
+  const onPointerMove = useCallback((e: any) => {
+    if (!dragging.current) return;
+    e.stopPropagation();
+    const pe = e.nativeEvent ?? e as PointerEvent;
+
+    const ndc = getPointerNDC(pe);
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, camera);
+    if (ray.ray.intersectPlane(plane.current, intersect.current)) {
+      // Delta from the initial hit to the current hit
+      const delta = intersect.current.clone().sub(startWorld.current);
+      const newPos = startMeshPos.current.clone().add(delta);
+      // Move the mesh locally (no store update yet)
+      meshRef.current!.position.copy(newPos);
+    }
+  }, [camera, getPointerNDC]);
+
+  const onPointerUp = useCallback((e: any) => {
+    if (!dragging.current) return;
+    e.stopPropagation();
+    dragging.current = false;
+    const pe = e.nativeEvent ?? e as PointerEvent;
+    gl.domElement.releasePointerCapture(pe.pointerId);
+
+    // Commit the final position to the store
+    const p = meshRef.current!.position;
+    const [px, py, pz] = threeToPhysics(p.x, p.y, p.z);
+    const updates: Partial<Wire> = endpoint === 'start'
+      ? { x1: px, y1: py, z1: pz }
+      : { x2: px, y2: py, z2: pz };
+    useAntennaStore.getState().updateWire(wireId, updates);
+    onDragEnd();
+  }, [gl, wireId, endpoint, onDragEnd]);
+
+  return (
+    <mesh
+      ref={meshRef}
+      position={initialPosition}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+    >
+      <sphereGeometry args={[radius, 12, 12]} />
+      <meshStandardMaterial
+        color={color}
+        transparent
+        opacity={0.85}
+      />
+    </mesh>
+  );
+};
+
+// ── Wire Mesh ────────────────────────────────────────────────────────────────
+
 interface WireMeshProps {
   wire: Wire;
   isSelected: boolean;
   onClick: () => void;
+  onDragStart: () => void;
+  onDragEnd: () => void;
 }
 
-/**
- * Renders a single wire as a cylinder with endpoint spheres.
- * The cylinder is placed at the midpoint and oriented via a quaternion that
- * rotates the default Y-axis cylinder to match the wire direction.
- */
-const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick }) => {
-  const meshRef = useRef<THREE.Mesh>(null);
-
-  // Compute midpoint, orientation quaternion, and length from the two endpoints
+const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick, onDragStart, onDragEnd }) => {
   const { position, quaternion, length } = useMemo(() => {
     const s = physicsToThree(wire.x1, wire.y1, wire.z1);
     const e = physicsToThree(wire.x2, wire.y2, wire.z2);
@@ -43,25 +160,20 @@ const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick }) => {
     dir.normalize();
 
     const quat = new THREE.Quaternion();
-    const cylAxis = new THREE.Vector3(0, 1, 0);
-    quat.setFromUnitVectors(cylAxis, dir);
+    quat.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
 
     return { position: mid, quaternion: quat, length: len };
   }, [wire.x1, wire.y1, wire.z1, wire.x2, wire.y2, wire.z2]);
 
-  // Scale up the display radius so thin wires remain visible in the viewport
   const displayRadius = Math.max(wire.radius * 50, 0.05);
+  const handleRadius = displayRadius * 2.5;
 
   return (
     <group>
       <mesh
-        ref={meshRef}
         position={position}
         quaternion={quaternion}
-        onClick={(e) => {
-          e.stopPropagation();
-          onClick();
-        }}
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
       >
         <cylinderGeometry args={[displayRadius, displayRadius, length, 8]} />
         <meshStandardMaterial
@@ -69,34 +181,50 @@ const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick }) => {
           emissive={isSelected ? '#443300' : '#001133'}
         />
       </mesh>
-      {/* Endpoint spheres */}
-      <mesh position={physicsToThree(wire.x1, wire.y1, wire.z1)}>
-        <sphereGeometry args={[displayRadius * 1.5, 8, 8]} />
-        <meshStandardMaterial color={isSelected ? '#ffaa00' : '#66aaff'} />
-      </mesh>
-      <mesh position={physicsToThree(wire.x2, wire.y2, wire.z2)}>
-        <sphereGeometry args={[displayRadius * 1.5, 8, 8]} />
-        <meshStandardMaterial color={isSelected ? '#ffaa00' : '#66aaff'} />
-      </mesh>
+      <DragHandle
+        initialPosition={physicsToThree(wire.x1, wire.y1, wire.z1)}
+        color={isSelected ? '#ffaa00' : '#66aaff'}
+        radius={handleRadius}
+        wireId={wire.id}
+        endpoint="start"
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      />
+      <DragHandle
+        initialPosition={physicsToThree(wire.x2, wire.y2, wire.z2)}
+        color={isSelected ? '#ffaa00' : '#66aaff'}
+        radius={handleRadius}
+        wireId={wire.id}
+        endpoint="end"
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      />
     </group>
   );
 };
 
-/** Semi-transparent ground plane at Y=0 (physics Z=0), shown when ground is not free-space. */
-const GroundPlane: React.FC = () => {
-  return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
-      <planeGeometry args={[40, 40]} />
-      <meshStandardMaterial color="#224422" transparent opacity={0.3} side={THREE.DoubleSide} />
-    </mesh>
-  );
-};
+// ── Ground Plane ─────────────────────────────────────────────────────────────
 
-/** Inner scene: lights, grid, axes, ground plane, and all wire meshes.
- *  Axis lines show physics axes: X (red), Y (green, into screen), Z (blue, up).
- */
+const GroundPlane: React.FC = () => (
+  <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
+    <planeGeometry args={[40, 40]} />
+    <meshStandardMaterial color="#224422" transparent opacity={0.3} side={THREE.DoubleSide} />
+  </mesh>
+);
+
+// ── Scene ────────────────────────────────────────────────────────────────────
+
 const SceneContent: React.FC = () => {
   const { wires, selectedWireId, selectWire, ground } = useAntennaStore();
+  const controlsRef = useRef<any>(null);
+
+  const handleDragStart = useCallback(() => {
+    if (controlsRef.current) controlsRef.current.enabled = false;
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (controlsRef.current) controlsRef.current.enabled = true;
+  }, []);
 
   return (
     <>
@@ -112,40 +240,28 @@ const SceneContent: React.FC = () => {
           wire={wire}
           isSelected={selectedWireId === wire.id}
           onClick={() => selectWire(wire.id)}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
         />
       ))}
 
-      {/* Axis lines: X (red), Y (green, into screen), Z (blue, up) */}
-      <Line
-        points={[[0, 0, 0], [6, 0, 0]]}
-        color="#ff4444"
-        lineWidth={1}
-      />
-      <Line
-        points={[[0, 0, 0], [0, 0, 6]]}
-        color="#44ff44"
-        lineWidth={1}
-      />
-      <Line
-        points={[[0, 0, 0], [0, 6, 0]]}
-        color="#4444ff"
-        lineWidth={1}
-      />
+      <Line points={[[0, 0, 0], [6, 0, 0]]} color="#ff4444" lineWidth={1} />
+      <Line points={[[0, 0, 0], [0, 0, 6]]} color="#44ff44" lineWidth={1} />
+      <Line points={[[0, 0, 0], [0, 6, 0]]} color="#4444ff" lineWidth={1} />
 
-      <OrbitControls makeDefault />
+      <OrbitControls ref={controlsRef} makeDefault />
     </>
   );
 };
 
-/** Top-level editor component: wraps the Three.js Canvas with orbit controls. */
-const WireEditor: React.FC = () => {
-  return (
-    <div className="editor-container">
-      <Canvas camera={{ position: [10, 10, 10], fov: 50, near: 0.01, far: 10000 }}>
-        <SceneContent />
-      </Canvas>
-    </div>
-  );
-};
+// ── Canvas ───────────────────────────────────────────────────────────────────
+
+const WireEditor: React.FC = () => (
+  <div className="editor-container">
+    <Canvas camera={{ position: [10, 10, 10], fov: 50, near: 0.01, far: 10000 }}>
+      <SceneContent />
+    </Canvas>
+  </div>
+);
 
 export default WireEditor;

@@ -131,7 +131,7 @@ const PatternMesh: React.FC = () => {
 
   return (
     <mesh geometry={geometry}>
-      <meshStandardMaterial vertexColors side={THREE.DoubleSide} />
+      <meshStandardMaterial vertexColors side={THREE.DoubleSide} transparent opacity={0.6} depthWrite={false} />
     </mesh>
   );
 };

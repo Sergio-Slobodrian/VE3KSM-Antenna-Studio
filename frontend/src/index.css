@@ -648,6 +648,14 @@ select {
   line-height: 1.4;
 }
 
+.match-svg {
+  background: var(--bg-secondary);
+  border-radius: 4px;
+  margin: 8px 0;
+  display: block;
+  max-width: 100%;
+}
+
 .match-core-table {
   width: 100%;
   font-size: 12px;

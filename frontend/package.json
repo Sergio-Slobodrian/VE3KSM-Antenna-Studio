@@ -1,12 +1,11 @@
 {
-  "name": "antenna-studio",
+  "name": "antenna-studio-frontend",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
+  "description": "Frontend sources for Antenna Studio. This package is no longer built by Node; the Go backend (backend/internal/assets) bundles the TypeScript tree in-process via esbuild's Go library. `npm install` is only used to populate node_modules so the Go bundler can resolve imports.",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
-    "preview": "vite preview"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@react-three/drei": "^9.105.0",
@@ -23,8 +22,6 @@
     "@types/react-dom": "^18.3.0",
     "@types/three": "^0.163.0",
     "@types/uuid": "^9.0.8",
-    "@vitejs/plugin-react": "^4.2.1",
-    "typescript": "^5.4.5",
-    "vite": "^5.2.11"
+    "typescript": "^5.4.5"
   }
 }

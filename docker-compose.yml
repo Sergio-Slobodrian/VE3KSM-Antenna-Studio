@@ -1,19 +1,14 @@
+# One service, one Go binary.  The backend compiles the TypeScript
+# frontend in-process (via esbuild's Go library) and serves the
+# resulting JS/CSS/HTML alongside the /api/* endpoints.  No Node.js,
+# Vite, or nginx at runtime.
 services:
-  backend:
+  antenna-studio:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     ports:
       - "8080:8080"
     environment:
       - PORT=8080
-      - CORS_ORIGINS=http://localhost:3000
-
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile
-    ports:
-      - "3000:80"
-    depends_on:
-      - backend
+      - CORS_ORIGINS=http://localhost:8080

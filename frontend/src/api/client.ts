@@ -15,8 +15,15 @@ import type {
   Template,
 } from '@/types';
 
-/** Base URL for API requests; overridable via VITE_API_BASE env var. */
-const API_BASE = import.meta.env.VITE_API_BASE || '';
+/**
+ * Base URL for API requests.  The Go backend serves both the bundled
+ * frontend and the JSON API from the same origin, so an empty string
+ * (→ relative URL) is the right default.  esbuild's Define option in
+ * backend/internal/assets replaces `import.meta.env.VITE_API_BASE` with
+ * a literal "" at bundle time, so nothing Vite-specific remains in the
+ * emitted JavaScript.
+ */
+const API_BASE: string = import.meta.env.VITE_API_BASE || '';
 
 /** POST body for /api/simulate (snake_case keys matching Go backend). */
 interface SimulateRequest {

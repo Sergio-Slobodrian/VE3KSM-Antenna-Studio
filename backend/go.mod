@@ -3,6 +3,7 @@ module antenna-studio/backend
 go 1.24.0
 
 require (
+	github.com/evanw/esbuild v0.21.5
 	github.com/gin-gonic/gin v1.9.1
 	github.com/rs/cors v1.11.0
 	gonum.org/v1/gonum v0.17.0

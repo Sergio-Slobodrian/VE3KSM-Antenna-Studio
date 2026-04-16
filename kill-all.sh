@@ -1,7 +1,7 @@
 #!/bin/bash
-# Kill the Antenna Studio server (single Go process).
+# Kill the VE3KSM Antenna Studio server (single Go process).
 
-echo "Stopping Antenna Studio..."
+echo "Stopping VE3KSM Antenna Studio..."
 
 pkill -f "cmd/server" 2>/dev/null
 pkill -f "antenna-studio" 2>/dev/null

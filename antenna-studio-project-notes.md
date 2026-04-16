@@ -1,4 +1,4 @@
-# Antenna Studio — Project Planning Notes
+# VE3KSM Antenna Studio — Project Planning Notes
 
 ## Project Overview
 

@@ -142,8 +142,8 @@ func TestComponentFromX_NegativeIsCapacitor(t *testing.T) {
 // Sanity: All returns one entry per topology even when some are skipped.
 func TestAll_AlwaysReturnsAllTopologies(t *testing.T) {
 	r, _ := All(Request{LoadR: 30, LoadX: +10, FreqHz: 14e6, SourceZ0: 50})
-	if len(r.Solutions) != 5 {
-		t.Fatalf("want 5 solution slots, got %d", len(r.Solutions))
+	if len(r.Solutions) != 6 {
+		t.Fatalf("want 6 solution slots, got %d", len(r.Solutions))
 	}
 	_ = cmplx.Abs(0) // silence import
 }

@@ -319,7 +319,7 @@ const Header: React.FC = () => {
 
   return (
     <header className="header">
-      <div className="header-title">Antenna Studio</div>
+      <div className="header-title">VE3KSM Antenna Studio</div>
       <div className="header-actions">
         <TemplateSelector />
         <button className="btn btn-outline" onClick={handleSave} title="Save design to file">

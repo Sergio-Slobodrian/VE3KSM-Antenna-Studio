@@ -1,5 +1,5 @@
 /**
- * Shared type definitions and constants for Antenna Studio.
+ * Shared type definitions and constants for VE3KSM Antenna Studio.
  *
  * All spatial coordinates are stored internally in meters using the physics
  * convention (Z-up). Display-unit conversion is handled at the UI layer via

@@ -67,7 +67,7 @@ func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) error {
 
 	comments := opts.Comments
 	if len(comments) == 0 {
-		comments = []string{"Antenna Studio export"}
+		comments = []string{"VE3KSM Antenna Studio export"}
 	}
 	for _, c := range comments {
 		fmt.Fprintf(&sb, "CM %s\n", c)

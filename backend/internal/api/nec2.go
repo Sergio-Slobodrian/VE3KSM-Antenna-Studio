@@ -118,7 +118,7 @@ func HandleNEC2Export(c *gin.Context) {
 	gw := nec2.FromInput(input)
 
 	opts := nec2.WriteOptions{
-		Comments: []string{"Antenna Studio export"},
+		Comments: []string{"VE3KSM Antenna Studio export"},
 	}
 	if req.FreqStart > 0 && req.FreqEnd > req.FreqStart && req.FreqSteps >= 2 {
 		opts.FreqStartMHz = req.FreqStart

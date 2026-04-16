@@ -1,4 +1,4 @@
-# Antenna Studio
+# VE3KSM Antenna Studio
 
 A web-based antenna design and simulation tool using the Method of Moments
 (MoM) electromagnetic solver.  Design wire antennas visually, run simulations,
@@ -68,57 +68,4 @@ Environment: `PORT` (default `8080`), `CORS_ORIGINS` (comma-separated list).
 ## Production Build
 
 ```bash
-make build    # → ./bin/antenna-studio
-```
-
-Deploy the binary alongside the `frontend/` directory (with `node_modules/`
-populated) and launch with `-frontend-dir /path/to/frontend`.
-
-## Docker
-
-```bash
-docker-compose up --build
-```
-
-- App: <http://localhost:8080>
-
-The Dockerfile uses a throwaway Node stage to run `npm install`, a Go stage
-to build the binary, and a minimal alpine runtime containing the binary
-plus the frontend source tree and `node_modules/`.  Node itself is not in
-the runtime image.
-
-## Project Structure
-
-```
-backend/
-  cmd/server/        Entry point — API + frontend bundler + static serving
-  internal/
-    api/             HTTP handlers, request/response DTOs (Gin)
-    assets/          esbuild-backed TS/TSX/CSS bundler + asset handlers
-    config/          Env-var configuration loader
-    geometry/        Wire validation, antenna templates
-    mom/             MoM solver (Z-matrix, Green's function, far-field)
-
-frontend/            TS/TSX source tree consumed by backend/internal/assets
-  src/
-    components/      UI components (editor, inputs, results, layout)
-    store/           Zustand state management
-    api/             Backend API client
-```
-
-## API Endpoints
-
-| Method | Path                   | Description                                 |
-|--------|------------------------|---------------------------------------------|
-| POST   | `/api/simulate`        | Run single-frequency simulation             |
-| POST   | `/api/sweep`           | Run frequency sweep (SWR/impedance vs freq) |
-| GET    | `/api/templates`       | List available antenna presets              |
-| POST   | `/api/templates/:name` | Generate geometry from a template           |
-
-## Available Templates
-
-- Half-Wave Dipole
-- Quarter-Wave Vertical
-- 3-Element Yagi
-- Inverted-V Dipole
-- Full-Wave Loop
+make build    #

@@ -1,4 +1,4 @@
-// Package api defines the HTTP API layer for the Antenna Studio backend.
+// Package api defines the HTTP API layer for the VE3KSM Antenna Studio backend.
 // It contains request/response DTOs, Gin handlers, and middleware.
 package api
 
@@ -113,6 +113,10 @@ type SweepRequest struct {
 	FreqStart float64   `json:"freq_start" binding:"required,gt=0"`
 	FreqEnd   float64   `json:"freq_end" binding:"required,gtfield=FreqStart"`
 	FreqSteps int       `json:"freq_steps" binding:"required,min=2,max=500"`
+	// SweepMode picks "exact", "interpolated", or "" (auto).  Auto
+	// switches to interpolated when freq_steps > 32.
+	SweepMode    string `json:"sweep_mode,omitempty"`
+	SweepAnchors int    `json:"sweep_anchors,omitempty"`
 	// ReferenceImpedance (Ω) for VSWR.  Zero or omitted → 50 Ω.
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
 }

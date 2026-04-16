@@ -78,7 +78,7 @@ export function sweepToCSV(sweep: SweepResult): string {
 export function sweepToTouchstone(sweep: SweepResult): string {
   const z0 = sweep.referenceImpedance || 50;
   const lines: string[] = [];
-  lines.push('!Antenna Studio sweep export');
+  lines.push('!VE3KSM Antenna Studio sweep export');
   lines.push(`!Generated ${new Date().toISOString()}`);
   lines.push(`# Hz S RI R ${z0}`);
 

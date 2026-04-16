@@ -330,3 +330,60 @@ export async function generateTemplate(
 
   return { wires, source, ground };
 }
+
+// ───────── Matching network designer (POST /api/match) ─────────
+
+/** A single passive component in a match-network solution. */
+export interface MatchComponent {
+  kind: 'L' | 'C' | 'R' | 'shorted_stub' | 'open_stub' | 'transformer';
+  position: 'series' | 'shunt';
+  value: number;     // henries / farads / ohms (kind-dependent)
+  reactance: number; // ohms at the design frequency
+  label: string;
+}
+
+/** A toroidal-core option for the toroid-transformer topology. */
+export interface ToroidCore {
+  name: string;
+  material: string;
+  freq_range: string;
+  al_nh_per_t2: number;
+  primary_turns: number;
+  secondary_turns: number;
+  primary_inductance_uh: number;
+}
+
+/** One matching-network candidate returned by /api/match. */
+export interface MatchSolution {
+  topology: string;
+  components: MatchComponent[];
+  notes?: string;
+  cores?: ToroidCore[];
+}
+
+/** Full set of matching-network designs. */
+export interface MatchResult {
+  load_r: number;
+  load_x: number;
+  source_z0: number;
+  freq_hz: number;
+  solutions: MatchSolution[];
+}
+
+/** Request a matching-network design from the backend. */
+export async function designMatch(opts: {
+  loadR: number;
+  loadX: number;
+  sourceZ0: number;
+  freqMHz: number;
+  qFactor?: number;
+}): Promise<MatchResult> {
+  return fetchJson<MatchResult>('/api/match', {
+    load_r: opts.loadR,
+    load_x: opts.loadX,
+    source_z0: opts.sourceZ0,
+    freq_mhz: opts.freqMHz,
+    q_factor: opts.qFactor ?? 0,
+  });
+}
+

@@ -1,4 +1,4 @@
-// Package main is the single entry point for the Antenna Studio server.
+// Package main is the single entry point for the VE3KSM Antenna Studio server.
 //
 // One Go binary does everything:
 //
@@ -65,7 +65,7 @@ func main() {
 	bundler.Register(router)
 
 	addr := ":" + cfg.Port
-	log.Printf("Antenna Studio listening on %s", addr)
+	log.Printf("VE3KSM Antenna Studio listening on %s", addr)
 	if err := router.Run(addr); err != nil {
 		log.Fatalf("server failed: %v", err)
 	}

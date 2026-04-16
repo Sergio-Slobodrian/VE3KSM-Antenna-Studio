@@ -1,8 +1,8 @@
-# Antenna Studio — Architecture & Design Document
+# VE3KSM Antenna Studio — Architecture & Design Document
 
 ## 1. Executive Summary
 
-Antenna Studio is a web-based antenna design and simulation tool built on the **Method of Moments (MoM)** electromagnetic solver. Users define wire antenna geometries through a visual 3D editor and tabular input, run simulations against a Go-based MoM solver, and visualize results as 3D radiation patterns, SWR curves, and impedance plots.
+VE3KSM Antenna Studio is a web-based antenna design and simulation tool built on the **Method of Moments (MoM)** electromagnetic solver. Users define wire antenna geometries through a visual 3D editor and tabular input, run simulations against a Go-based MoM solver, and visualize results as 3D radiation patterns, SWR curves, and impedance plots.
 
 The system is a monorepo with two primary components:
 - **Frontend**: React (Vite) SPA with Three.js for 3D visualization and Zustand for state management

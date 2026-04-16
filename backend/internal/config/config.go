@@ -1,4 +1,4 @@
-// Package config handles server configuration for the Antenna Studio backend.
+// Package config handles server configuration for the VE3KSM Antenna Studio backend.
 // All settings are read from environment variables, with sensible defaults
 // for local development. The launcher (cmd/launcher) sets these variables
 // when spawning the backend process.

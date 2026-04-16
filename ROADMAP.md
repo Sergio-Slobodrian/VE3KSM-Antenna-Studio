@@ -1,4 +1,4 @@
-# Antenna Studio Roadmap
+# VE3KSM Antenna Studio Roadmap
 
 A research-informed enhancement plan, ordered by ROI (user value per unit
 of implementation effort).  Items are derived from a survey of recent
@@ -105,7 +105,7 @@ and beta-match in addition to the existing L-match.
 
 - **Effort:** Medium
 
-### 8. AWE / vector-fitting for frequency sweeps
+### 8. AWE / vector-fitting for frequency sweeps — *Status: shipped*
 
 Rebuilding Z from scratch at every frequency in a 201-point sweep is
 the dominant runtime cost.  Asymptotic Waveform Evaluation (or simple

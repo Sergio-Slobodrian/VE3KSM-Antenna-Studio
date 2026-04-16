@@ -63,7 +63,11 @@ func HandleSweep(c *gin.Context) {
 	freqStartHz := req.FreqStart * 1e6
 	freqEndHz := req.FreqEnd * 1e6
 
-	result, err := mom.Sweep(input, freqStartHz, freqEndHz, req.FreqSteps)
+	opts := mom.SweepOptions{
+		Mode:    mom.SweepMode(req.SweepMode),
+		Anchors: req.SweepAnchors,
+	}
+	result, err := mom.SweepWithOptions(input, freqStartHz, freqEndHz, req.FreqSteps, opts)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "sweep failed: " + err.Error()})
 		return

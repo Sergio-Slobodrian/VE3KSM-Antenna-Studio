@@ -43,9 +43,22 @@ type Component struct {
 
 // Solution is one matching-network candidate.
 type Solution struct {
-	Topology   string      `json:"topology"`
-	Components []Component `json:"components"`
-	Notes      string      `json:"notes,omitempty"`
+	Topology   string       `json:"topology"`
+	Components []Component  `json:"components"`
+	Notes      string       `json:"notes,omitempty"`
+	Cores      []CoreOption `json:"cores,omitempty"`
+}
+
+// CoreOption is a single toroid candidate for a transformer design.
+// Populated only by the toroid topology.
+type CoreOption struct {
+	Name             string  `json:"name"`              // e.g. "T-50-2", "FT-114-43"
+	Material         string  `json:"material"`          // e.g. "Iron powder #2"
+	FreqRange        string  `json:"freq_range"`        // human-friendly band, e.g. "1-30 MHz"
+	ALnHperT2        float64 `json:"al_nh_per_t2"`      // inductance index, nH per turn^2
+	PrimaryTurns     int     `json:"primary_turns"`
+	SecondaryTurns   int     `json:"secondary_turns"`
+	PrimaryInductanceUH float64 `json:"primary_inductance_uh"`
 }
 
 // Result is the full set of designs returned to the caller.  Each
@@ -75,6 +88,7 @@ func All(req Request) (Result, error) {
 		designTNetwork,
 		designGammaMatch,
 		designBetaMatch,
+		designToroidalTransformer,
 	} {
 		s, err := fn(req)
 		if err != nil {

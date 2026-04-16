@@ -519,7 +519,15 @@ func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []
 // wavenumber k changes.
 //
 // Frequencies in the output are converted to MHz for display convenience.
+// Sweep runs a frequency sweep using the auto-selected mode
+// (interpolated for nSteps > InterpolationThreshold, exact otherwise).
+// Use SweepWithOptions to pick a mode explicitly or to set a custom
+// anchor count for the interpolated path.
 func Sweep(input SimulationInput, freqStartHz, freqEndHz float64, steps int) (*SweepResult, error) {
+	return SweepWithOptions(input, freqStartHz, freqEndHz, steps, SweepOptions{Mode: SweepModeAuto})
+}
+
+func sweepExact(input SimulationInput, freqStartHz, freqEndHz float64, steps int) (*SweepResult, error) {
 	if steps < 2 {
 		return nil, fmt.Errorf("frequency sweep requires at least 2 steps")
 	}

@@ -1,4 +1,4 @@
-#\!/bin/bash
+#!/bin/bash
 # Kill the Antenna Studio server (single Go process).
 
 echo "Stopping Antenna Studio..."

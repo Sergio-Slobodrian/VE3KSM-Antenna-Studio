@@ -6,9 +6,33 @@
  * METERS_TO_UNIT factors.
  */
 
+/** Conductor material name; an empty string means perfect conductor (loss-free). */
+export type Material =
+  | ''
+  | 'copper'
+  | 'aluminum'
+  | 'brass'
+  | 'steel'
+  | 'stainless'
+  | 'silver'
+  | 'gold';
+
+/** Human-friendly labels for the material dropdown. */
+export const MATERIAL_LABELS: Record<Material, string> = {
+  '': 'Perfect (lossless)',
+  copper: 'Copper',
+  aluminum: 'Aluminum',
+  brass: 'Brass',
+  steel: 'Steel (μr~1000)',
+  stainless: 'Stainless',
+  silver: 'Silver',
+  gold: 'Gold',
+};
+
 /** A single wire element in the antenna geometry.
  *  Endpoints (x1,y1,z1)-(x2,y2,z2) are in meters, physics Z-up frame.
  *  `radius` is wire radius in meters; `segments` is the MoM discretisation count.
+ *  `material` selects the conductor for skin-effect loss; '' = perfect conductor.
  */
 export interface Wire {
   id: string;
@@ -20,6 +44,7 @@ export interface Wire {
   z2: number;
   radius: number;
   segments: number;
+  material: Material;
 }
 
 /** Voltage source placement: which wire and segment to excite, plus voltage magnitude. */
@@ -28,6 +53,47 @@ export interface Source {
   segmentIndex: number;
   voltage: number;
 }
+
+/** Lumped R / L / C load attached to a single segment.
+ *  series_rlc: Z = R + jωL + 1/(jωC) (omitting any zero component).
+ *  parallel_rlc: Y = 1/R + 1/(jωL) + jωC, then Z = 1/Y.
+ */
+export interface Load {
+  id: string;
+  wireIndex: number;
+  segmentIndex: number;
+  topology: 'series_rlc' | 'parallel_rlc';
+  r: number; // Ohms
+  l: number; // Henries
+  c: number; // Farads
+}
+
+/** One end of a transmission-line element.
+ *  wireIndex >= 0: attaches to a (wire, segment) on the antenna model.
+ *  wireIndex == -1: shorted termination.
+ *  wireIndex == -2: open termination.
+ */
+export interface TLEnd {
+  wireIndex: number;
+  segmentIndex: number;
+}
+
+export const TLEndShorted = -1;
+export const TLEndOpen = -2;
+
+/** NEC-style 2-port transmission line.  Stubs use a real A end with B
+ *  set to TLEndShorted or TLEndOpen.
+ */
+export interface TransmissionLine {
+  id: string;
+  a: TLEnd;
+  b: TLEnd;
+  z0: number;
+  length: number; // metres
+  velocityFactor: number; // 0..1
+  lossDbPerM: number;
+}
+
 
 /** Ground-plane configuration.
  *  'free_space' = no ground; 'perfect' = PEC ground at Z=0;
@@ -66,18 +132,67 @@ export interface CurrentEntry {
   phase: number;
 }
 
+/** Complex reflection coefficient Γ = (Z - Z0)/(Z + Z0). */
+export interface Reflection {
+  re: number;
+  im: number;
+}
+
+/** Headline far-field metrics surfaced by the backend post-processor. */
+export interface FarFieldMetrics {
+  peakGainDb: number;
+  peakThetaDeg: number;
+  peakPhiDeg: number;
+  frontToBackDb: number;
+  beamwidthAzDeg: number;
+  beamwidthElDeg: number;
+  sidelobeLevelDb: number;
+  radiationEfficiency: number;
+  totalRadiatedPowerW: number;
+  inputPowerW: number;
+}
+
+/** 2D principal-plane cuts through the 3D pattern. */
+export interface PolarCuts {
+  azimuthDeg: number[];
+  azimuthGainDb: number[];
+  elevationDeg: number[];
+  elevationGainDb: number[];
+  fixedElevationDeg: number;
+  fixedAzimuthDeg: number;
+}
+
+/** Non-blocking accuracy warnings from the MoM segmentation validator. */
+export interface Warning {
+  code: string;
+  severity: 'info' | 'warn' | 'error';
+  message: string;
+  wireIndex?: number;
+  segmentIndex?: number;
+}
+
 /** Complete result from a single-frequency MoM simulation. */
 export interface SimulationResult {
   /** Feed-point impedance: R (resistance) + jX (reactance) in Ohms. */
   impedance: { r: number; x: number };
-  /** Standing Wave Ratio relative to 50 Ohms. */
+  /** Standing Wave Ratio at the user-supplied reference impedance. */
   swr: number;
-  /** Peak gain in dBi. */
+  /** Complex reflection coefficient at Z0 (Smith-chart input). */
+  reflection: Reflection;
+  /** Reference impedance used for SWR / reflection (Ohms). */
+  referenceImpedance: number;
+  /** Peak gain in dBi (alias for metrics.peakGainDb, kept for back-compat). */
   gainDbi: number;
+  /** Headline far-field metrics. */
+  metrics: FarFieldMetrics;
+  /** Azimuth + elevation 2D cuts for polar plotting. */
+  polarCuts: PolarCuts;
   /** 3D far-field radiation pattern sampled on a theta/phi grid. */
   pattern: PatternPoint[];
   /** Current distribution across all wire segments. */
   currents: CurrentEntry[];
+  /** Non-blocking accuracy warnings from the MoM validator. */
+  warnings: Warning[];
 }
 
 /** Result of a frequency-sweep simulation: arrays indexed in lockstep. */
@@ -85,6 +200,10 @@ export interface SweepResult {
   frequencies: number[];
   swr: number[];
   impedance: { r: number; x: number }[];
+  reflections: Reflection[];
+  referenceImpedance: number;
+  /** Non-blocking accuracy warnings for the sweep range (validated at start + end frequency). */
+  warnings: Warning[];
 }
 
 /** Supported display units for the UI; internal storage is always meters. */

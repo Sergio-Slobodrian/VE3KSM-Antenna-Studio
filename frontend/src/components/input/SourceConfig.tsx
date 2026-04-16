@@ -1,23 +1,23 @@
 /**
- * Source excitation configuration panel.
+ * Source excitation + reference impedance configuration.
  *
- * Lets the user pick which wire and segment receives the voltage source, and
- * set the source voltage.  The segment dropdown is dynamically bounded by the
- * selected wire's segment count (0-based indexing).
+ * Picks which wire and segment receives the voltage source, the source
+ * voltage, and the reference impedance Z0 used for SWR / Smith-chart
+ * reflection-coefficient calculations.
  */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import NumericInput from '@/components/common/NumericInput';
 
 const SourceConfig: React.FC = () => {
-  const { source, wires, setSource } = useAntennaStore();
+  const { source, wires, setSource, referenceImpedance, setReferenceImpedance } = useAntennaStore();
 
   const selectedWire = wires[source.wireIndex];
   const maxSegment = selectedWire ? selectedWire.segments - 1 : 0;
 
   return (
     <div className="config-section">
-      <h3>Source</h3>
+      <h3>Source &amp; Reference</h3>
       <div className="config-row">
         <label>Wire</label>
         <select
@@ -53,6 +53,15 @@ const SourceConfig: React.FC = () => {
           onChange={(v) => setSource({ voltage: v })}
           min={0}
           step={0.1}
+        />
+      </div>
+      <div className="config-row">
+        <NumericInput
+          label="Z0 (Ω)"
+          value={referenceImpedance}
+          onChange={(v) => setReferenceImpedance(v)}
+          min={1}
+          step={1}
         />
       </div>
     </div>

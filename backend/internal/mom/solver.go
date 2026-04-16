@@ -127,6 +127,35 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 			input.Ground.Conductivity, input.Ground.Permittivity)
 	}
 
+	// Step 5c: Inject any lumped R/L/C loads onto the Z-matrix diagonal.
+	// Loads are applied AFTER ground contributions so the load impedance
+	// adds linearly to whatever the wire's self-radiation impedance is.
+	lossPerBasis := make([]float64, nBasis)
+
+	if len(input.Loads) > 0 {
+		if err := applyLoads(Z, input.Loads, omega, input.Wires,
+			wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis); err != nil {
+			return nil, fmt.Errorf("applying loads: %w", err)
+		}
+	}
+
+	// Step 5d: Apply skin-effect surface resistance for non-PEC wire
+	// materials.  This is the bulk-conductor analogue of lumped loads.
+	if err := applyMaterialLoss(cdenseAdder{Z: Z}, input.Wires, allSegments,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, freq, lossPerBasis); err != nil {
+		return nil, fmt.Errorf("applying material loss: %w", err)
+	}
+
+	// Step 5e: Stamp transmission-line elements (NEC TL cards).  Two-port
+	// TLs add to four Z-matrix entries; stubs collapse to a single
+	// diagonal stamp.  Resistive parts of Z11/Z22 feed the loss budget.
+	if len(input.TransmissionLines) > 0 {
+		if err := applyTransmissionLines(Z, input.TransmissionLines, omega,
+			input.Wires, wireSegCounts, wireBasisOffsets, lossPerBasis); err != nil {
+			return nil, fmt.Errorf("applying transmission lines: %w", err)
+		}
+	}
+
 	// ---- Step 6: Build the excitation (voltage) vector ----
 	// In MoM with delta-gap source model, only the feed basis function has a
 	// nonzero voltage; all others are zero (no incident field on the antenna).
@@ -151,17 +180,15 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		impedance = ComplexImpedance{R: real(zIn), X: imag(zIn)}
 	}
 
-	// ---- Step 9: Compute SWR relative to 50-ohm reference impedance ----
-	// Γ = (Z_in - Z_0) / (Z_in + Z_0), SWR = (1 + |Γ|) / (1 - |Γ|)
-	zComplex := complex(impedance.R, impedance.X)
-	gamma := (zComplex - 50) / (zComplex + 50)
-	gammaAbs := cmplx.Abs(gamma)
-	swr := 1.0
-	if gammaAbs < 1.0 {
-		swr = (1.0 + gammaAbs) / (1.0 - gammaAbs)
-	} else {
-		swr = 999.0 // cap SWR for total or near-total reflection
+	// ---- Step 9: Reflection coefficient and VSWR at the user-supplied
+	// reference impedance (defaults to 50 Ω if unset).  We surface both
+	// the complex Γ (for Smith-chart plotting) and the scalar VSWR.
+	z0 := input.ReferenceImpedance
+	if z0 <= 0 {
+		z0 = DefaultReferenceImpedance
 	}
+	gamma := ReflectionCoefficient(impedance, z0)
+	swr := VSWRFromGamma(gamma)
 
 	// ---- Step 10: Interpolate segment currents from basis node currents ----
 	// The basis function currents are defined at inter-segment nodes; we need
@@ -196,12 +223,101 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		}
 	}
 
+	// ---- Step 12b: Headline metrics + 2D polar cuts (post-processing
+	// over the existing pattern grid; no additional MoM work required).
+	inputPower := FeedInputPower(voltage, feedCurrent)
+	lossPower := DissipatedPower(I, lossPerBasis)
+	metrics, cuts := ComputeFarFieldMetricsWithLoss(pattern, inputPower, lossPower)
+
+	warnings := ValidateGeometry(input.Wires, freq)
+	if input.Ground.Type == "real" {
+		for wi, w := range input.Wires {
+			if w.Z1 == 0 || w.Z2 == 0 {
+				warnings = append(warnings, Warning{
+					Code:      "wire_endpoint_on_ground",
+					Severity:  SeverityWarn,
+					Message:   "wire endpoint sits exactly at z=0; with real ground the Fresnel kernel can become near-singular and produce non-physical impedance.  Lift the endpoint by a few cm or use perfect ground for base-fed verticals",
+					WireIndex: wi,
+				})
+			}
+		}
+	}
+	if impedance.R < 0 {
+		// Self-diagnose: re-run with segment counts shifted by +-2 on every
+		// wire.  If the perturbed runs give positive R, the failure is most
+		// likely a discretisation bandgap at the user’s exact N rather than
+		// a real bug or anti-resonance.  Recursion is bounded by skipping the
+		// retry inside the perturbed run via the no-retry private flag.
+		if !input.skipBandgapRetry {
+			perturb := func(delta int) (float64, bool) {
+				probe := input
+				probe.skipBandgapRetry = true
+				probe.Wires = make([]Wire, len(input.Wires))
+				copy(probe.Wires, input.Wires)
+				for i := range probe.Wires {
+					n := probe.Wires[i].Segments + delta
+					if n < 3 {
+						n = 3
+					}
+					probe.Wires[i].Segments = n
+				}
+				res, err := Simulate(probe)
+				if err != nil {
+					return 0, false
+				}
+				return res.Impedance.R, true
+			}
+			rPlus, okPlus := perturb(+2)
+			rMinus, okMinus := perturb(-2)
+			if okPlus && okMinus && rPlus > 0 && rMinus > 0 {
+				warnings = append(warnings, Warning{
+					Code:     "discretisation_bandgap",
+					Severity: SeverityWarn,
+					Message:  fmt.Sprintf("re-running with segments+/-2 produced healthy positive R (%.1f, %.1f Ω); your current N hits a triangle-basis discretisation bandgap at this wavelength.  Try N+/-2 or N+/-5 to escape.", rPlus, rMinus),
+				})
+			} else if okPlus && rPlus > 0 {
+				warnings = append(warnings, Warning{
+					Code:     "discretisation_bandgap",
+					Severity: SeverityWarn,
+					Message:  fmt.Sprintf("re-running with segments+2 produced positive R (%.1f Ω); your current N likely hits a discretisation bandgap.  Try a different N.", rPlus),
+				})
+			} else if okMinus && rMinus > 0 {
+				warnings = append(warnings, Warning{
+					Code:     "discretisation_bandgap",
+					Severity: SeverityWarn,
+					Message:  fmt.Sprintf("re-running with segments-2 produced positive R (%.1f Ω); your current N likely hits a discretisation bandgap.  Try a different N.", rMinus),
+				})
+			}
+		}
+
+		absX := math.Abs(impedance.X)
+		absR := math.Abs(impedance.R)
+		if absR > 0 && absX/absR > 10 {
+			warnings = append(warnings, Warning{
+				Code:     "near_anti_resonance",
+				Severity: SeverityInfo,
+				Message:  fmt.Sprintf("near an anti-resonance: feed-point Z = %.1f %+.1fj Ω with |X|/|R| = %.1f.  At anti-resonances the true |Z| is theoretically infinite and the current at the feed is tiny, so Z = V/I becomes dominated by numerical noise (R can come out small with arbitrary sign).  Shift frequency by 1-3%% to escape the singular point, or accept that |Z| at this exact frequency is very large and the SWR is essentially infinite.", impedance.R, impedance.X, absX/absR),
+			})
+		} else {
+			warnings = append(warnings, Warning{
+				Code:     "non_physical_impedance",
+				Severity: SeverityError,
+				Message:  fmt.Sprintf("solver returned negative real part R = %.2f Ω with |X|/|R| = %.1f; this is unphysical.  Likely causes: (1) a wire endpoint sits exactly on the ground plane (use perfect ground or lift it); (2) Z-matrix ill-conditioning from awkward N at this wavelength.", impedance.R, absX/(absR+1e-30)),
+			})
+		}
+	}
+
 	return &SolverResult{
-		Currents:  currents,
-		Impedance: impedance,
-		SWR:       swr,
-		GainDBi:   gainDBi,
-		Pattern:   pattern,
+		Currents:           currents,
+		Impedance:          impedance,
+		SWR:                swr,
+		Reflection:         gamma,
+		ReferenceImpedance: z0,
+		GainDBi:            gainDBi,
+		Pattern:            pattern,
+		Metrics:            metrics,
+		Cuts:               cuts,
+		Warnings:           warnings,
 	}, nil
 }
 
@@ -408,10 +524,16 @@ func Sweep(input SimulationInput, freqStartHz, freqEndHz float64, steps int) (*S
 		return nil, fmt.Errorf("frequency sweep requires at least 2 steps")
 	}
 
+	z0 := input.ReferenceImpedance
+	if z0 <= 0 {
+		z0 = DefaultReferenceImpedance
+	}
 	result := &SweepResult{
-		Frequencies: make([]float64, steps),
-		SWR:         make([]float64, steps),
-		Impedance:   make([]ComplexImpedance, steps),
+		Frequencies:        make([]float64, steps),
+		SWR:                make([]float64, steps),
+		Impedance:          make([]ComplexImpedance, steps),
+		Reflections:        make([]complex128, steps),
+		ReferenceImpedance: z0,
 	}
 
 	stepSize := (freqEndHz - freqStartHz) / float64(steps-1)
@@ -430,6 +552,70 @@ func Sweep(input SimulationInput, freqStartHz, freqEndHz float64, steps int) (*S
 
 		result.SWR[i] = res.SWR
 		result.Impedance[i] = res.Impedance
+		result.Reflections[i] = res.Reflection
+	}
+
+	// Validate the geometry at both ends of the sweep (a sweep typically
+	// spans much wider frequency ranges than a single Simulate call, so
+	// the start may have segments-too-short warnings while the end has
+	// segments-too-long ones).  Dedupe by code so the banner stays tidy.
+	seen := map[string]bool{}
+	for _, w := range ValidateGeometry(input.Wires, freqStartHz) {
+		if !seen[w.Code] {
+			result.Warnings = append(result.Warnings, w)
+			seen[w.Code] = true
+		}
+	}
+	for _, w := range ValidateGeometry(input.Wires, freqEndHz) {
+		if !seen[w.Code] {
+			result.Warnings = append(result.Warnings, w)
+			seen[w.Code] = true
+		}
+	}
+	_ = seen
+
+	// A sweep wider than ~20:1 in frequency cannot satisfy both NEC
+	// accuracy bounds with any single segment count: the high-freq end
+	// needs N >= 10*L*f_high/c (lambda/10) while the low-freq end needs
+	// N <= 200*L*f_low/c (lambda/200).  Both satisfied only if
+	// f_high/f_low <= 20.  Without this advisory the user sees the
+	// two warnings *serially* as they adjust N and ends up chasing
+	// them in circles.  10:1 catches the "tight but possible" zone.
+	if freqStartHz > 0 {
+		ratio := freqEndHz / freqStartHz
+		if ratio > 10 {
+			sev := SeverityInfo
+			msg := fmt.Sprintf(
+				"sweep ratio %.1f:1 (%.3f→%.3f MHz) is wider than any fixed segment count can fully satisfy; expect impedance drift near each band edge.  Either narrow the sweep or split it into bands and pick segments per band",
+				ratio, freqStartHz/1e6, freqEndHz/1e6)
+			if ratio > 20 {
+				sev = SeverityWarn
+				msg = fmt.Sprintf(
+					"sweep ratio %.1f:1 (%.3f→%.3f MHz) exceeds 20:1; no fixed segment count satisfies both NEC accuracy bounds (λ/200 low, λ/20 high).  Results near each extreme will be approximate; split the sweep into bands for trustworthy numbers",
+					ratio, freqStartHz/1e6, freqEndHz/1e6)
+			}
+			result.Warnings = append(result.Warnings, Warning{
+				Code:     "sweep_range_unsatisfiable",
+				Severity: sev,
+				Message:  msg,
+			})
+			// Downgrade the per-end seg-length warnings: with the
+			// range-unsatisfiable advisory now visible, they are
+			// just expected consequences and don't need their own
+			// alarm colour.
+			downgrade := map[string]bool{
+				"segment_too_long":               true,
+				"segment_below_lambda_over_20":   true,
+				"segment_too_short_for_frequency": true,
+				"segment_short_for_frequency":     true,
+			}
+			for i := range result.Warnings {
+				w := &result.Warnings[i]
+				if downgrade[w.Code] {
+					w.Severity = SeverityInfo
+				}
+			}
+		}
 	}
 
 	return result, nil

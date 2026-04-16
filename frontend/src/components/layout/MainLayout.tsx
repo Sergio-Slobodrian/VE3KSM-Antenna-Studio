@@ -1,30 +1,47 @@
 /**
  * Main layout with a resizable split panel.
  *
- * Left panel: scrollable input forms (wires, source, ground, frequency).
- * Right panel: tabbed viewer switching between 3D editor, radiation pattern,
- * SWR chart, impedance chart, and current distribution.
+ * Left panel: scrollable input forms (wires, source, loads, ground,
+ * frequency).  Right panel: tabbed viewer switching between 3D editor,
+ * radiation pattern, polar cuts, Smith chart, metrics, SWR chart,
+ * impedance chart, current distribution, and matching network.
  *
- * The divider is mouse-draggable and the left panel can be collapsed.
+ * A non-blocking warnings banner appears above the tab content whenever
+ * the segmentation validator emitted any findings.
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import WireTable from '@/components/input/WireTable';
 import SourceConfig from '@/components/input/SourceConfig';
 import GroundConfig from '@/components/input/GroundConfig';
 import FrequencyInput from '@/components/input/FrequencyInput';
+import LoadEditor from '@/components/input/LoadEditor';
+import TLEditor from '@/components/input/TLEditor';
 import WireEditor from '@/components/editor/WireEditor';
 import PatternViewer from '@/components/results/PatternViewer';
+import PolarCut from '@/components/results/PolarCut';
+import SmithChart from '@/components/results/SmithChart';
+import MetricsPanel from '@/components/results/MetricsPanel';
 import SWRChart from '@/components/results/SWRChart';
 import ImpedanceChart from '@/components/results/ImpedanceChart';
 import CurrentDisplay from '@/components/results/CurrentDisplay';
 import MatchingNetwork from '@/components/results/MatchingNetwork';
+import WarningsBanner from '@/components/results/WarningsBanner';
+import SweepExport from '@/components/results/SweepExport';
 
-type Tab = '3d' | 'pattern' | 'swr' | 'impedance' | 'currents' | 'matching';
+type Tab =
+  | '3d'
+  | 'pattern'
+  | 'cuts'
+  | 'smith'
+  | 'metrics'
+  | 'swr'
+  | 'impedance'
+  | 'currents'
+  | 'matching';
 
-// Constraints for the draggable left-panel width (pixels)
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 800;
-const DEFAULT_PANEL_WIDTH = 350;
+const DEFAULT_PANEL_WIDTH = 380;
 
 const MainLayout: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('3d');
@@ -34,9 +51,6 @@ const MainLayout: React.FC = () => {
   const startX = useRef(0);
   const startWidth = useRef(0);
 
-  // --- Drag-to-resize logic ---
-  // onMouseDown captures the initial position; window-level move/up handlers
-  // update panel width and clean up cursor override on release.
   const onMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
@@ -53,14 +67,12 @@ const MainLayout: React.FC = () => {
       const newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, startWidth.current + delta));
       setPanelWidth(newWidth);
     };
-
     const onMouseUp = () => {
       if (!isDragging.current) return;
       isDragging.current = false;
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
     };
-
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
     return () => {
@@ -73,7 +85,10 @@ const MainLayout: React.FC = () => {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: '3d', label: '3D Editor' },
-    { id: 'pattern', label: 'Radiation Pattern' },
+    { id: 'pattern', label: '3D Pattern' },
+    { id: 'cuts', label: 'Polar Cuts' },
+    { id: 'smith', label: 'Smith' },
+    { id: 'metrics', label: 'Metrics' },
     { id: 'swr', label: 'SWR' },
     { id: 'impedance', label: 'Impedance' },
     { id: 'currents', label: 'Currents' },
@@ -82,18 +97,15 @@ const MainLayout: React.FC = () => {
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case '3d':
-        return <WireEditor />;
-      case 'pattern':
-        return <PatternViewer />;
-      case 'swr':
-        return <SWRChart />;
-      case 'impedance':
-        return <ImpedanceChart />;
-      case 'currents':
-        return <CurrentDisplay />;
-      case 'matching':
-        return <MatchingNetwork />;
+      case '3d': return <WireEditor />;
+      case 'pattern': return <PatternViewer />;
+      case 'cuts': return <PolarCut />;
+      case 'smith': return <SmithChart />;
+      case 'metrics': return <MetricsPanel />;
+      case 'swr': return <SWRChart />;
+      case 'impedance': return <ImpedanceChart />;
+      case 'currents': return <CurrentDisplay />;
+      case 'matching': return <MatchingNetwork />;
     }
   };
 
@@ -104,6 +116,8 @@ const MainLayout: React.FC = () => {
           <div className="panel-scroll">
             <WireTable />
             <SourceConfig />
+            <LoadEditor />
+            <TLEditor />
             <GroundConfig />
             <FrequencyInput />
           </div>
@@ -122,6 +136,8 @@ const MainLayout: React.FC = () => {
         </button>
       </div>
       <div className="right-panel">
+        <WarningsBanner />
+        <SweepExport />
         <div className="tab-bar">
           {tabs.map((tab) => (
             <button

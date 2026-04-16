@@ -1,15 +1,19 @@
 /**
  * Zustand store for global antenna-design state.
  *
- * Holds the antenna geometry (wires), excitation source, ground configuration,
- * frequency settings, simulation results, and UI state (selected wire, display
- * unit, loading flag, error message).  All spatial values are stored in meters.
+ * Holds the antenna geometry (wires + materials), excitation source,
+ * lumped loads, ground configuration, frequency settings, reference
+ * impedance, simulation results, and UI state (selected wire, display
+ * unit, loading flag, error message).  All spatial values are stored
+ * in meters.
  */
 import { create } from 'zustand';
 import { v4 as uuidv4 } from 'uuid';
 import type {
   Wire,
   Source,
+  Load,
+  TransmissionLine,
   GroundConfig,
   FrequencyConfig,
   SimulationResult,
@@ -21,22 +25,37 @@ import type {
 interface AntennaState {
   wires: Wire[];
   source: Source;
+  loads: Load[];
+  transmissionLines: TransmissionLine[];
   ground: GroundConfig;
   frequency: FrequencyConfig;
+  /** Reference impedance Z0 (Ohms) for VSWR / Smith-chart reflection. */
+  referenceImpedance: number;
   simulationResult: SimulationResult | null;
   sweepResult: SweepResult | null;
   selectedWireId: string | null;
   displayUnit: DisplayUnit;
   isSimulating: boolean;
   error: string | null;
+  /** Monotonically-increasing sequence numbers for the most recent result of each kind.
+   *  WarningsBanner uses these to decide which warnings array to render. */
+  simulationResultSeq: number;
+  sweepResultSeq: number;
 
   setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
   removeWire: (id: string) => void;
   setSource: (source: Partial<Source>) => void;
+  addLoad: (load?: Partial<Load>) => void;
+  updateLoad: (id: string, updates: Partial<Load>) => void;
+  removeLoad: (id: string) => void;
+  addTransmissionLine: (tl?: Partial<TransmissionLine>) => void;
+  updateTransmissionLine: (id: string, updates: Partial<TransmissionLine>) => void;
+  removeTransmissionLine: (id: string) => void;
   setGround: (ground: Partial<GroundConfig>) => void;
   setFrequency: (freq: Partial<FrequencyConfig>) => void;
+  setReferenceImpedance: (z0: number) => void;
   selectWire: (id: string | null) => void;
   loadTemplate: (data: { wires: Wire[]; source: Source; ground: GroundConfig }) => void;
   setSimulationResult: (result: SimulationResult | null) => void;
@@ -65,6 +84,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
       z2: DEFAULT_DIPOLE_LENGTH / 2,
       radius: 0.001,
       segments: 21,
+      material: '',
     },
   ],
   source: {
@@ -72,6 +92,8 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     segmentIndex: 10,
     voltage: 1.0,
   },
+  loads: [],
+  transmissionLines: [],
   ground: {
     type: 'free_space',
     conductivity: 0.005,
@@ -84,12 +106,15 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     freqEnd: 15.0,
     freqSteps: 50,
   },
+  referenceImpedance: 50,
   simulationResult: null,
   sweepResult: null,
   selectedWireId: defaultWireId,
   displayUnit: 'meters' as DisplayUnit,
   isSimulating: false,
   error: null,
+  simulationResultSeq: 0,
+  sweepResultSeq: 0,
 
   // --- Actions ---
 
@@ -108,6 +133,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
           z2: 0,
           radius: 0.001,
           segments: 11,
+          material: '',
           ...wire,
         },
       ],
@@ -129,11 +155,43 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   setSource: (source) =>
     set((state) => ({ source: { ...state.source, ...source } })),
 
+  /** Append a lumped load with sensible defaults; optional partial overrides. */
+  addLoad: (load) =>
+    set((state) => ({
+      loads: [
+        ...state.loads,
+        {
+          id: uuidv4(),
+          wireIndex: 0,
+          segmentIndex: 0,
+          topology: 'series_rlc',
+          r: 0,
+          l: 0,
+          c: 0,
+          ...load,
+        },
+      ],
+    })),
+
+  /** Patch one or more fields on an existing load by id. */
+  updateLoad: (id, updates) =>
+    set((state) => ({
+      loads: state.loads.map((l) => (l.id === id ? { ...l, ...updates } : l)),
+    })),
+
+  /** Delete a load by id. */
+  removeLoad: (id) =>
+    set((state) => ({
+      loads: state.loads.filter((l) => l.id !== id),
+    })),
+
   setGround: (ground) =>
     set((state) => ({ ground: { ...state.ground, ...ground } })),
 
   setFrequency: (freq) =>
     set((state) => ({ frequency: { ...state.frequency, ...freq } })),
+
+  setReferenceImpedance: (z0) => set({ referenceImpedance: z0 > 0 ? z0 : 50 }),
 
   selectWire: (id) => set({ selectedWireId: id }),
   setDisplayUnit: (unit) => set({ displayUnit: unit }),
@@ -141,17 +199,27 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   /** Replace the entire antenna model with a backend-generated template. Clears results. */
   loadTemplate: (data) =>
     set({
-      wires: data.wires,
+      wires: data.wires.map((w) => ({ ...w, material: w.material ?? '' })),
       source: data.source,
       ground: data.ground,
+      loads: [],
+  transmissionLines: [],
       selectedWireId: data.wires.length > 0 ? data.wires[0].id : null,
       simulationResult: null,
       sweepResult: null,
       error: null,
     }),
 
-  setSimulationResult: (result) => set({ simulationResult: result }),
-  setSweepResult: (result) => set({ sweepResult: result }),
+  setSimulationResult: (result) =>
+    set((state) => {
+      const seq = Math.max(state.simulationResultSeq, state.sweepResultSeq) + 1;
+      return { simulationResult: result, simulationResultSeq: seq };
+    }),
+  setSweepResult: (result) =>
+    set((state) => {
+      const seq = Math.max(state.simulationResultSeq, state.sweepResultSeq) + 1;
+      return { sweepResult: result, sweepResultSeq: seq };
+    }),
   setSimulating: (value) => set({ isSimulating: value }),
   setError: (error) => set({ error }),
 }));

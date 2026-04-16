@@ -10,7 +10,7 @@
  * Coordinate mapping: physics spherical (theta from +Z, phi in XY) is
  * converted to Three.js Y-up Cartesian via `sphericalToCartesian`.
  */
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
@@ -18,8 +18,13 @@ import { useAntennaStore } from '@/store/antennaStore';
 import { sphericalToCartesian } from '@/utils/conversions';
 import ColorScale from '@/components/common/ColorScale';
 
+interface PatternMeshProps {
+  opacity: number;
+  wireframe: boolean;
+}
+
 /** Builds and renders the 3D radiation-pattern surface mesh. */
-const PatternMesh: React.FC = () => {
+const PatternMesh: React.FC<PatternMeshProps> = ({ opacity, wireframe }) => {
   const simulationResult = useAntennaStore((s) => s.simulationResult);
   const groundType = useAntennaStore((s) => s.ground.type);
 
@@ -131,7 +136,14 @@ const PatternMesh: React.FC = () => {
 
   return (
     <mesh geometry={geometry}>
-      <meshStandardMaterial vertexColors side={THREE.DoubleSide} transparent opacity={0.6} depthWrite={false} />
+      <meshStandardMaterial
+        vertexColors
+        side={THREE.DoubleSide}
+        transparent
+        opacity={opacity}
+        depthWrite={opacity >= 0.99}
+        wireframe={wireframe}
+      />
     </mesh>
   );
 };
@@ -139,6 +151,9 @@ const PatternMesh: React.FC = () => {
 /** Outer component: shows the 3D pattern canvas with a colour-scale legend overlay. */
 const PatternViewer: React.FC = () => {
   const simulationResult = useAntennaStore((s) => s.simulationResult);
+  const [opacity, setOpacity] = useState(0.6);
+  const [wireframe, setWireframe] = useState(false);
+  const [showGround, setShowGround] = useState(true);
 
   if (!simulationResult || simulationResult.pattern.length === 0) {
     return (
@@ -158,7 +173,7 @@ const PatternViewer: React.FC = () => {
       <Canvas camera={{ position: [5, 5, 5], fov: 50, near: 0.01, far: 10000 }}>
         <ambientLight intensity={0.4} />
         <directionalLight position={[5, 10, 5]} intensity={0.7} />
-        <PatternMesh />
+        <PatternMesh opacity={opacity} wireframe={wireframe} />
         {useAntennaStore.getState().ground.type !== 'free_space' && (
           <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]}>
             <planeGeometry args={[12, 12]} />
@@ -168,6 +183,36 @@ const PatternViewer: React.FC = () => {
         <axesHelper args={[3]} />
         <OrbitControls makeDefault />
       </Canvas>
+      <div className="pattern-controls" style={{ position: 'absolute', top: 12, left: 12 }}>
+        <label className="pattern-control-row">
+          Opacity
+          <input
+            type="range"
+            min={0.1}
+            max={1}
+            step={0.05}
+            value={opacity}
+            onChange={(e) => setOpacity(parseFloat(e.target.value))}
+          />
+          <span className="muted small">{opacity.toFixed(2)}</span>
+        </label>
+        <label className="pattern-control-row">
+          <input
+            type="checkbox"
+            checked={wireframe}
+            onChange={(e) => setWireframe(e.target.checked)}
+          />
+          Wireframe
+        </label>
+        <label className="pattern-control-row">
+          <input
+            type="checkbox"
+            checked={showGround}
+            onChange={(e) => setShowGround(e.target.checked)}
+          />
+          Show ground
+        </label>
+      </div>
       <div style={{ position: 'absolute', bottom: 16, right: 16 }}>
         <ColorScale minValue={minGain} maxValue={maxGain} />
       </div>

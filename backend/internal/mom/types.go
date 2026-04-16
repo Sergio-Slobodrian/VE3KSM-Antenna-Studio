@@ -17,6 +17,55 @@ type SimulationInput struct {
 	Frequency float64      `json:"frequency"` // operating frequency in Hz
 	Ground    GroundConfig `json:"ground"`
 	Source    Source       `json:"source"`
+	Loads     []Load       `json:"loads,omitempty"` // optional lumped R/L/C loads
+	// skipBandgapRetry suppresses the negative-R self-diagnosis
+	// recursion in Simulate.  Set internally on perturbed probes.
+	skipBandgapRetry bool `json:"-"`
+	TransmissionLines []TransmissionLine `json:"transmission_lines,omitempty"` // optional 2-port TLs
+	// ReferenceImpedance (Ω) is used for the reflection coefficient and VSWR
+	// calculations.  When zero or negative the solver substitutes
+	// DefaultReferenceImpedance (50 Ω).
+	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
+}
+
+// LoadTopology selects how a Load's R, L, and C components are combined.
+//
+//   - LoadSeriesRLC:   Z = R + jωL + 1/(jωC)
+//     Components with value 0 are simply omitted from the sum, so a single
+//     non-zero field models a pure resistor, inductor, or capacitor.
+//   - LoadParallelRLC: Y = 1/R + 1/(jωL) + jωC, then Z = 1/Y
+//     Components with value 0 are omitted from the admittance sum.
+type LoadTopology string
+
+const (
+	LoadSeriesRLC   LoadTopology = "series_rlc"
+	LoadParallelRLC LoadTopology = "parallel_rlc"
+)
+
+// Load is a lumped passive R / L / C circuit attached to a single segment of
+// a wire.  It is the standard NEC-style "LD" element used to model traps,
+// loading coils, resistive terminations, hat capacitors, folded-dipole
+// stubs, and lumped baluns.
+//
+// The load is realised by adding its complex impedance Z_load(ω) directly to
+// the diagonal entry of the Z-matrix for the basis function nearest the
+// requested segment, which is the same convention the existing voltage
+// source uses.  This is exact for delta-gap-style lumped elements and is
+// the standard treatment in NEC-2/4 for the LD card.
+//
+// Field semantics by topology:
+//
+//	series_rlc:   any combination of R (Ω), L (H), C (F).  Zero values
+//	              are skipped.  Pure-R, pure-L, pure-C all valid.
+//	parallel_rlc: at least one of R, L, C must be non-zero.  Zero values
+//	              are skipped (treated as open / infinite).
+type Load struct {
+	WireIndex    int          `json:"wire_index"`
+	SegmentIndex int          `json:"segment_index"`
+	Topology     LoadTopology `json:"topology"` // "series_rlc" or "parallel_rlc"
+	R            float64      `json:"r"`        // resistance (Ω)
+	L            float64      `json:"l"`        // inductance (H)
+	C            float64      `json:"c"`        // capacitance (F)
 }
 
 // Wire represents a single straight wire element in the antenna geometry.
@@ -25,19 +74,20 @@ type SimulationInput struct {
 // used for the thin-wire kernel approximation. Segments controls how many
 // equal-length pieces the wire is subdivided into for the MoM discretization.
 type Wire struct {
-	X1       float64 `json:"x1"`       // start X coordinate (m)
-	Y1       float64 `json:"y1"`       // start Y coordinate (m)
-	Z1       float64 `json:"z1"`       // start Z coordinate (m)
-	X2       float64 `json:"x2"`       // end X coordinate (m)
-	Y2       float64 `json:"y2"`       // end Y coordinate (m)
-	Z2       float64 `json:"z2"`       // end Z coordinate (m)
-	Radius   float64 `json:"radius"`   // wire radius (m)
-	Segments int     `json:"segments"` // number of MoM segments for this wire
+	X1       float64      `json:"x1"`                 // start X coordinate (m)
+	Y1       float64      `json:"y1"`                 // start Y coordinate (m)
+	Z1       float64      `json:"z1"`                 // start Z coordinate (m)
+	X2       float64      `json:"x2"`                 // end X coordinate (m)
+	Y2       float64      `json:"y2"`                 // end Y coordinate (m)
+	Z2       float64      `json:"z2"`                 // end Z coordinate (m)
+	Radius   float64      `json:"radius"`             // wire radius (m)
+	Segments int          `json:"segments"`           // number of MoM segments for this wire
+	Material MaterialName `json:"material,omitempty"` // optional conductor material; "" = perfect conductor
 }
 
 // GroundConfig describes the ground plane configuration.
 // Type selects the ground model: "free_space" (no ground), "perfect" (PEC
-// image theory), or "real" (lossy ground, not yet implemented).
+// image theory), or "real" (lossy ground via Fresnel reflection coefficients).
 type GroundConfig struct {
 	Type         string  `json:"type"`         // "free_space", "perfect", "real"
 	Conductivity float64 `json:"conductivity"` // ground conductivity in S/m (only for "real")
@@ -56,11 +106,16 @@ type Source struct {
 
 // SolverResult holds the full output of a single-frequency simulation.
 type SolverResult struct {
-	Currents  []CurrentEntry   `json:"currents"`  // current on each segment
-	Impedance ComplexImpedance `json:"impedance"` // feed-point impedance (ohms)
-	SWR       float64          `json:"swr"`       // voltage standing wave ratio (50-ohm ref)
-	GainDBi   float64          `json:"gain_dbi"`  // peak directivity in dBi
-	Pattern   []PatternPoint   `json:"pattern"`   // far-field radiation pattern samples
+	Currents           []CurrentEntry   `json:"currents"`            // current on each segment
+	Impedance          ComplexImpedance `json:"impedance"`           // feed-point impedance (ohms)
+	SWR                float64          `json:"swr"`                 // VSWR at ReferenceImpedance
+	Reflection         complex128       `json:"-"`                   // complex reflection coefficient Γ at ReferenceImpedance
+	ReferenceImpedance float64          `json:"reference_impedance"` // Z₀ used for SWR / Γ (Ω)
+	GainDBi            float64          `json:"gain_dbi"`            // peak directivity in dBi
+	Pattern            []PatternPoint   `json:"pattern"`             // far-field radiation pattern samples
+	Metrics            FarFieldMetrics  `json:"metrics"`             // F/B, beamwidth, sidelobe, efficiency
+	Cuts               PolarCuts        `json:"polar_cuts"`          // azimuth & elevation 2D cuts
+	Warnings           []Warning        `json:"warnings,omitempty"`  // non-blocking accuracy heuristics
 }
 
 // CurrentEntry holds the current phasor for one segment, decomposed into
@@ -91,7 +146,10 @@ type PatternPoint struct {
 // SweepResult holds results from a frequency sweep: impedance and SWR
 // at each frequency point. Frequencies are stored in MHz for display convenience.
 type SweepResult struct {
-	Frequencies []float64          `json:"frequencies"` // frequency points (MHz)
-	SWR         []float64          `json:"swr"`         // SWR at each frequency
-	Impedance   []ComplexImpedance `json:"impedance"`   // impedance at each frequency
+	Frequencies        []float64          `json:"frequencies"`         // frequency points (MHz)
+	SWR                []float64          `json:"swr"`                 // SWR at each frequency, at ReferenceImpedance
+	Impedance          []ComplexImpedance `json:"impedance"`           // impedance at each frequency
+	Reflections        []complex128       `json:"-"`                   // complex Γ at each frequency
+	ReferenceImpedance float64            `json:"reference_impedance"` // Z₀ used for SWR / Γ (Ω)
+	Warnings           []Warning          `json:"warnings,omitempty"`  // accuracy warnings for the sweep range (validated at start + end freq)
 }

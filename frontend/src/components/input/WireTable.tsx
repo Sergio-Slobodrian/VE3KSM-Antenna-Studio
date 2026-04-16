@@ -2,9 +2,8 @@
  * Wire geometry table.
  *
  * Displays all wires in a tabular form with editable endpoint coordinates,
- * radius, and segment count.  Includes a unit-selector dropdown that controls
- * the display unit for all length fields (conversion is handled in WireRow).
- * An "Add Wire" button appends a new default wire.
+ * radius, segment count, and conductor material.  Includes a unit-selector
+ * dropdown that controls the display unit for all length fields.
  */
 import React from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
@@ -47,6 +46,7 @@ const WireTable: React.FC = () => {
               <th>Z2 ({unitLabel})</th>
               <th>Radius ({unitLabel})</th>
               <th>Segs</th>
+              <th>Material</th>
               <th></th>
             </tr>
           </thead>

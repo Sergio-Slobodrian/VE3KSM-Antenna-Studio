@@ -84,7 +84,7 @@ func HandleGetTemplates(c *gin.Context) {
 	type templateInfo struct {
 		Name        string                   `json:"name"`
 		Description string                   `json:"description"`
-		Parameters  []geometry.TemplateParam  `json:"parameters"`
+		Parameters  []geometry.TemplateParam `json:"parameters"`
 	}
 
 	resp := make([]templateInfo, len(templates))
@@ -146,6 +146,7 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 			Z2:       w.Z2,
 			Radius:   w.Radius,
 			Segments: w.Segments,
+			Material: mom.MaterialName(w.Material),
 		}
 	}
 
@@ -155,9 +156,35 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 		voltage = 1 + 0i
 	}
 
+	loads := make([]mom.Load, len(req.Loads))
+	for i, ld := range req.Loads {
+		topo := mom.LoadTopology(ld.Topology)
+		if topo == "" {
+			topo = mom.LoadSeriesRLC
+		}
+		loads[i] = mom.Load{
+			WireIndex:    ld.WireIndex,
+			SegmentIndex: ld.SegmentIndex,
+			Topology:     topo,
+			R:            ld.R,
+			L:            ld.L,
+			C:            ld.C,
+		}
+	}
+
+	lines := make([]mom.TransmissionLine, len(req.TransmissionLines))
+	for i, tl := range req.TransmissionLines {
+		lines[i] = mom.TransmissionLine{
+			A: mom.TLEnd{WireIndex: tl.A.WireIndex, SegmentIndex: tl.A.SegmentIndex},
+			B: mom.TLEnd{WireIndex: tl.B.WireIndex, SegmentIndex: tl.B.SegmentIndex},
+			Z0: tl.Z0, Length: tl.Length,
+			VelocityFactor: tl.VelocityFactor, LossDbPerM: tl.LossDbPerM,
+		}
+	}
+
 	return mom.SimulationInput{
 		Wires:     wires,
-		Frequency: req.FrequencyMHz * 1e6, // MHz -> Hz
+		Frequency: req.FrequencyMHz * 1e6,
 		Ground: mom.GroundConfig{
 			Type:         req.Ground.Type,
 			Conductivity: req.Ground.Conductivity,
@@ -168,5 +195,8 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 			SegmentIndex: req.Source.SegmentIndex,
 			Voltage:      voltage,
 		},
+		Loads:              loads,
+		TransmissionLines:  lines,
+		ReferenceImpedance: req.ReferenceImpedance,
 	}
 }

@@ -8,11 +8,24 @@ import "antenna-studio/backend/internal/mom"
 // pattern, and per-segment current distribution. The frontend uses these
 // to render the polar plot, current overlay, and impedance readout.
 type SimulateResponse struct {
-	Impedance ImpedanceDTO `json:"impedance"`
-	SWR       float64      `json:"swr"`
-	GainDBi   float64      `json:"gain_dbi"`
-	Pattern   []PatternDTO `json:"pattern"`
-	Currents  []CurrentDTO `json:"currents"`
+	Impedance          ImpedanceDTO        `json:"impedance"`
+	SWR                float64             `json:"swr"`
+	Reflection         ReflectionDTO       `json:"reflection"`          // Γ at ReferenceImpedance, complex (Smith-chart input)
+	ReferenceImpedance float64             `json:"reference_impedance"` // Z₀ used for SWR / reflection (Ω)
+	GainDBi            float64             `json:"gain_dbi"`
+	Metrics            mom.FarFieldMetrics `json:"metrics"`             // F/B, beamwidth, sidelobe level, efficiency
+	PolarCuts          mom.PolarCuts       `json:"polar_cuts"`          // azimuth + elevation 2D cuts
+	Pattern            []PatternDTO        `json:"pattern"`
+	Currents           []CurrentDTO        `json:"currents"`
+	Warnings           []mom.Warning       `json:"warnings,omitempty"`  // non-blocking accuracy warnings
+}
+
+// ReflectionDTO is the rectangular form of a complex reflection coefficient
+// suitable for JSON transport.  Re and Im are the real and imaginary parts
+// of Γ; |Γ| ≤ 1 inside the Smith chart's unit circle.
+type ReflectionDTO struct {
+	Re float64 `json:"re"`
+	Im float64 `json:"im"`
 }
 
 // ImpedanceDTO holds the complex feed-point impedance decomposed into
@@ -45,9 +58,12 @@ type CurrentDTO struct {
 // It contains parallel arrays of frequency (MHz), SWR, and impedance values
 // that the frontend plots as SWR-vs-frequency and impedance-vs-frequency charts.
 type SweepResponse struct {
-	Frequencies []float64      `json:"frequencies"`
-	SWR         []float64      `json:"swr"`
-	Impedance   []ImpedanceDTO `json:"impedance"`
+	Frequencies        []float64       `json:"frequencies"`
+	SWR                []float64       `json:"swr"`
+	Impedance          []ImpedanceDTO  `json:"impedance"`
+	Reflections        []ReflectionDTO `json:"reflections"`         // Γ at each frequency (Smith-chart locus)
+	ReferenceImpedance float64         `json:"reference_impedance"` // Z₀ used for SWR / Γ (Ω)
+	Warnings           []mom.Warning   `json:"warnings,omitempty"`  // accuracy warnings for the sweep range
 }
 
 // ErrorResponse is the standard JSON error envelope used by all endpoints.
@@ -79,11 +95,16 @@ func SolverResultToResponse(r *mom.SolverResult) SimulateResponse {
 	}
 
 	return SimulateResponse{
-		Impedance: ImpedanceDTO{R: r.Impedance.R, X: r.Impedance.X},
-		SWR:       r.SWR,
-		GainDBi:   r.GainDBi,
-		Pattern:   pattern,
-		Currents:  currents,
+		Impedance:          ImpedanceDTO{R: r.Impedance.R, X: r.Impedance.X},
+		SWR:                r.SWR,
+		Reflection:         ReflectionDTO{Re: real(r.Reflection), Im: imag(r.Reflection)},
+		ReferenceImpedance: r.ReferenceImpedance,
+		GainDBi:            r.GainDBi,
+		Metrics:            r.Metrics,
+		PolarCuts:          r.Cuts,
+		Pattern:            pattern,
+		Currents:           currents,
+		Warnings:           r.Warnings,
 	}
 }
 
@@ -95,9 +116,17 @@ func SweepResultToResponse(r *mom.SweepResult) SweepResponse {
 		impedance[i] = ImpedanceDTO{R: z.R, X: z.X}
 	}
 
+	refls := make([]ReflectionDTO, len(r.Reflections))
+	for i, g := range r.Reflections {
+		refls[i] = ReflectionDTO{Re: real(g), Im: imag(g)}
+	}
+
 	return SweepResponse{
-		Frequencies: r.Frequencies,
-		SWR:         r.SWR,
-		Impedance:   impedance,
+		Frequencies:        r.Frequencies,
+		SWR:                r.SWR,
+		Impedance:          impedance,
+		Reflections:        refls,
+		ReferenceImpedance: r.ReferenceImpedance,
+		Warnings:           r.Warnings,
 	}
 }

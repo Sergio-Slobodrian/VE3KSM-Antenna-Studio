@@ -8,6 +8,8 @@
 import type {
   Wire,
   Source,
+  Load,
+  TransmissionLine,
   GroundConfig,
   FrequencyConfig,
   SimulationResult,
@@ -15,50 +17,41 @@ import type {
   Template,
 } from '@/types';
 
-/**
- * Base URL for API requests.  The Go backend serves both the bundled
- * frontend and the JSON API from the same origin, so an empty string
- * (→ relative URL) is the right default.  esbuild's Define option in
- * backend/internal/assets replaces `import.meta.env.VITE_API_BASE` with
- * a literal "" at bundle time, so nothing Vite-specific remains in the
- * emitted JavaScript.
- */
 const API_BASE: string = import.meta.env.VITE_API_BASE || '';
 
 /** POST body for /api/simulate (snake_case keys matching Go backend). */
 interface SimulateRequest {
-  wires: {
-    x1: number; y1: number; z1: number;
-    x2: number; y2: number; z2: number;
-    radius: number; segments: number;
-  }[];
-  source: { wire_index: number; segment_index: number; voltage: number };
-  ground: { type: string; conductivity: number; permittivity: number };
+  wires: ReturnType<typeof buildWires>;
+  source: ReturnType<typeof buildSource>;
+  loads: ReturnType<typeof buildLoads>;
+  transmission_lines: ReturnType<typeof buildTLs>;
+  ground: ReturnType<typeof buildGround>;
   frequency_mhz: number;
+  reference_impedance: number;
 }
 
 /** POST body for /api/sweep (snake_case keys matching Go backend). */
 interface SweepRequest {
-  wires: {
-    x1: number; y1: number; z1: number;
-    x2: number; y2: number; z2: number;
-    radius: number; segments: number;
-  }[];
-  source: { wire_index: number; segment_index: number; voltage: number };
-  ground: { type: string; conductivity: number; permittivity: number };
+  wires: ReturnType<typeof buildWires>;
+  source: ReturnType<typeof buildSource>;
+  loads: ReturnType<typeof buildLoads>;
+  transmission_lines: ReturnType<typeof buildTLs>;
+  ground: ReturnType<typeof buildGround>;
   freq_start: number;
   freq_end: number;
   freq_steps: number;
+  reference_impedance: number;
 }
 
 // --- Request builders: strip client-only fields (id) and remap key casing ---
 
-/** Strip the client-side `id` field from wires for the API payload. */
+/** Strip the client-side `id` field from wires and forward material. */
 function buildWires(wires: Wire[]) {
   return wires.map((w) => ({
     x1: w.x1, y1: w.y1, z1: w.z1,
     x2: w.x2, y2: w.y2, z2: w.z2,
     radius: w.radius, segments: w.segments,
+    material: w.material || undefined,
   }));
 }
 
@@ -79,18 +72,48 @@ function buildGround(ground: GroundConfig) {
   };
 }
 
+/** Strip client-side `id` field from loads and forward to the backend. */
+function buildLoads(loads: Load[]) {
+  return loads.map((l) => ({
+    wire_index: l.wireIndex,
+    segment_index: l.segmentIndex,
+    topology: l.topology,
+    r: l.r,
+    l: l.l,
+    c: l.c,
+  }));
+}
+
+/** Strip client-side `id` field from TLs and remap to snake_case. */
+function buildTLs(tls: TransmissionLine[]) {
+  return tls.map((t) => ({
+    a: { wire_index: t.a.wireIndex, segment_index: t.a.segmentIndex },
+    b: { wire_index: t.b.wireIndex, segment_index: t.b.segmentIndex },
+    z0: t.z0,
+    length: t.length,
+    velocity_factor: t.velocityFactor,
+    loss_db_per_m: t.lossDbPerM,
+  }));
+}
+
 /** Assemble a complete single-frequency simulation request. */
 export function buildSimulateRequest(
   wires: Wire[],
   source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
   ground: GroundConfig,
-  frequency: FrequencyConfig
+  frequency: FrequencyConfig,
+  referenceImpedance: number
 ): SimulateRequest {
   return {
     wires: buildWires(wires),
     source: buildSource(source),
+    loads: buildLoads(loads),
+    transmission_lines: buildTLs(transmissionLines),
     ground: buildGround(ground),
     frequency_mhz: frequency.frequencyMhz,
+    reference_impedance: referenceImpedance,
   };
 }
 
@@ -98,16 +121,22 @@ export function buildSimulateRequest(
 export function buildSweepRequest(
   wires: Wire[],
   source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
   ground: GroundConfig,
-  frequency: FrequencyConfig
+  frequency: FrequencyConfig,
+  referenceImpedance: number
 ): SweepRequest {
   return {
     wires: buildWires(wires),
     source: buildSource(source),
+    loads: buildLoads(loads),
+    transmission_lines: buildTLs(transmissionLines),
     ground: buildGround(ground),
     freq_start: frequency.freqStart,
     freq_end: frequency.freqEnd,
     freq_steps: frequency.freqSteps,
+    reference_impedance: referenceImpedance,
   };
 }
 
@@ -137,12 +166,56 @@ async function fetchGet<T>(url: string): Promise<T> {
 
 // --- Response types: raw snake_case shapes from the backend ---
 
+interface RawMetrics {
+  peak_gain_db: number;
+  peak_theta_deg: number;
+  peak_phi_deg: number;
+  front_to_back_db: number;
+  beamwidth_az_deg: number;
+  beamwidth_el_deg: number;
+  sidelobe_level_db: number;
+  radiation_efficiency: number;
+  total_radiated_power_w: number;
+  input_power_w: number;
+}
+
+interface RawCuts {
+  azimuth_deg: number[];
+  azimuth_gain_db: number[];
+  elevation_deg: number[];
+  elevation_gain_db: number[];
+  fixed_elevation_deg: number;
+  fixed_azimuth_deg: number;
+}
+
+interface RawWarning {
+  code: string;
+  severity: 'info' | 'warn' | 'error';
+  message: string;
+  wire_index?: number;
+  segment_index?: number;
+}
+
 interface RawSimulateResponse {
   impedance: { r: number; x: number };
   swr: number;
+  reflection: { re: number; im: number };
+  reference_impedance: number;
   gain_dbi: number;
+  metrics: RawMetrics;
+  polar_cuts: RawCuts;
   pattern: { theta: number; phi: number; gain_db: number }[];
   currents: { segment: number; magnitude: number; phase: number }[];
+  warnings?: RawWarning[];
+}
+
+interface RawSweepResponse {
+  frequencies: number[];
+  swr: number[];
+  impedance: { r: number; x: number }[];
+  reflections: { re: number; im: number }[];
+  reference_impedance: number;
+  warnings?: RawWarning[];
 }
 
 /** Run a single-frequency simulation; maps snake_case response to camelCase types. */
@@ -151,23 +224,61 @@ export async function simulate(request: SimulateRequest): Promise<SimulationResu
   return {
     impedance: raw.impedance,
     swr: raw.swr,
+    reflection: raw.reflection || { re: 0, im: 0 },
+    referenceImpedance: raw.reference_impedance ?? 50,
     gainDbi: raw.gain_dbi,
+    metrics: {
+      peakGainDb: raw.metrics?.peak_gain_db ?? raw.gain_dbi,
+      peakThetaDeg: raw.metrics?.peak_theta_deg ?? 0,
+      peakPhiDeg: raw.metrics?.peak_phi_deg ?? 0,
+      frontToBackDb: raw.metrics?.front_to_back_db ?? 0,
+      beamwidthAzDeg: raw.metrics?.beamwidth_az_deg ?? 0,
+      beamwidthElDeg: raw.metrics?.beamwidth_el_deg ?? 0,
+      sidelobeLevelDb: raw.metrics?.sidelobe_level_db ?? 0,
+      radiationEfficiency: raw.metrics?.radiation_efficiency ?? 1,
+      totalRadiatedPowerW: raw.metrics?.total_radiated_power_w ?? 0,
+      inputPowerW: raw.metrics?.input_power_w ?? 0,
+    },
+    polarCuts: {
+      azimuthDeg: raw.polar_cuts?.azimuth_deg ?? [],
+      azimuthGainDb: raw.polar_cuts?.azimuth_gain_db ?? [],
+      elevationDeg: raw.polar_cuts?.elevation_deg ?? [],
+      elevationGainDb: raw.polar_cuts?.elevation_gain_db ?? [],
+      fixedElevationDeg: raw.polar_cuts?.fixed_elevation_deg ?? 0,
+      fixedAzimuthDeg: raw.polar_cuts?.fixed_azimuth_deg ?? 0,
+    },
     pattern: (raw.pattern || []).map((p) => ({
       theta: p.theta,
       phi: p.phi,
       gainDb: p.gain_db,
     })),
     currents: raw.currents || [],
+    warnings: (raw.warnings || []).map((w) => ({
+      code: w.code,
+      severity: w.severity,
+      message: w.message,
+      wireIndex: w.wire_index,
+      segmentIndex: w.segment_index,
+    })),
   };
 }
 
-/** Run a frequency sweep; returns arrays of SWR and impedance per frequency step. */
+/** Run a frequency sweep; returns arrays of SWR, impedance and Γ per frequency step. */
 export async function sweep(request: SweepRequest): Promise<SweepResult> {
-  const raw = await fetchJson<Record<string, unknown>>('/api/sweep', request);
+  const raw = await fetchJson<RawSweepResponse>('/api/sweep', request);
   return {
-    frequencies: raw.frequencies as number[],
-    swr: raw.swr as number[],
-    impedance: raw.impedance as { r: number; x: number }[],
+    frequencies: raw.frequencies,
+    swr: raw.swr,
+    impedance: raw.impedance,
+    reflections: raw.reflections || [],
+    referenceImpedance: raw.reference_impedance ?? 50,
+    warnings: (raw.warnings || []).map((w) => ({
+      code: w.code,
+      severity: w.severity,
+      message: w.message,
+      wireIndex: w.wire_index,
+      segmentIndex: w.segment_index,
+    })),
   };
 }
 
@@ -189,7 +300,9 @@ export async function generateTemplate(
   );
 
   const wires = ((raw.wires as Array<Record<string, unknown>>) || []).map((w) => ({
-    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`,
+    id: typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random()}`,
     x1: w.x1 as number,
     y1: w.y1 as number,
     z1: w.z1 as number,
@@ -198,20 +311,21 @@ export async function generateTemplate(
     z2: w.z2 as number,
     radius: (w.radius as number) || 0.001,
     segments: (w.segments as number) || 11,
+    material: ((w.material as string) || '') as Wire['material'],
   }));
 
   const src = raw.source as Record<string, number>;
   const source: Source = {
     wireIndex: src.wire_index ?? src.wireIndex ?? 0,
     segmentIndex: src.segment_index ?? src.segmentIndex ?? 0,
-    voltage: src.voltage ?? 1.0,
+    voltage: src.voltage ?? 1,
   };
 
-  const gnd = raw.ground as Record<string, unknown>;
+  const grnd = raw.ground as Record<string, unknown>;
   const ground: GroundConfig = {
-    type: (gnd.type as GroundConfig['type']) || 'free_space',
-    conductivity: (gnd.conductivity as number) || 0.005,
-    permittivity: (gnd.permittivity as number) || 13,
+    type: ((grnd?.type as GroundConfig['type']) || 'free_space'),
+    conductivity: (grnd?.conductivity as number) || 0.005,
+    permittivity: (grnd?.permittivity as number) || 13,
   };
 
   return { wires, source, ground };

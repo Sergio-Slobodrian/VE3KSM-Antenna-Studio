@@ -2,7 +2,8 @@
 //
 // One Go binary does everything:
 //
-//   - Serves the JSON API under /api/*  (MoM solver, templates, sweeps).
+//   - Serves the JSON API under /api/*  (MoM solver, templates, sweeps,
+//     NEC-2 import/export).
 //   - Compiles the TypeScript/TSX frontend in-process via esbuild's Go
 //     library and serves the resulting JS/CSS/HTML under /assets/* and /.
 //
@@ -38,8 +39,6 @@ func main() {
 		frontendDir = detectFrontendDir()
 	}
 
-	// Build the bundle eagerly so a broken frontend fails the process
-	// before it starts accepting traffic.
 	bundler, err := assets.NewBundler(assets.Options{
 		FrontendDir: frontendDir,
 		Dev:         *devFlag,
@@ -49,21 +48,19 @@ func main() {
 	}
 	log.Printf("frontend bundled from %s (dev=%v)", frontendDir, *devFlag)
 
-	// gin.Default() includes Gin's built-in logger and recovery middleware.
 	router := gin.Default()
 
-	// CORS is still registered so the API remains usable from a separate
-	// origin if someone runs a bespoke client — but in the normal
-	// deployment everything is same-origin and the header is a no-op.
 	router.Use(api.SetupCORS(cfg.CORSOrigins))
 	router.Use(api.RequestLogger())
 
-	// API routes — registered before assets so /api/* wins over the SPA
-	// fallback installed by bundler.Register.
+	// API routes — registered before assets so /api/* wins over the SPA fallback.
 	router.POST("/api/simulate", api.HandleSimulate)
 	router.POST("/api/sweep", api.HandleSweep)
 	router.GET("/api/templates", api.HandleGetTemplates)
 	router.POST("/api/templates/:name", api.HandleGenerateTemplate)
+	router.POST("/api/nec2/import", api.HandleNEC2Import)
+	router.POST("/api/nec2/export", api.HandleNEC2Export)
+	router.POST("/api/match", api.HandleMatch)
 
 	bundler.Register(router)
 
@@ -74,15 +71,11 @@ func main() {
 	}
 }
 
-// detectFrontendDir walks up from the current working directory looking
-// for a folder that contains index.html + src/main.tsx.  This lets
-// `go run ./cmd/server` Just Work from either the repo root or backend/.
+// detectFrontendDir walks up from cwd looking for a folder containing
+// index.html + src/main.tsx, so `go run ./cmd/server` works from either
+// the repo root or backend/.
 func detectFrontendDir() string {
-	candidates := []string{
-		"frontend",
-		"../frontend",
-		"../../frontend",
-	}
+	candidates := []string{"frontend", "../frontend", "../../frontend"}
 	for _, c := range candidates {
 		if looksLikeFrontend(c) {
 			abs, _ := filepath.Abs(c)

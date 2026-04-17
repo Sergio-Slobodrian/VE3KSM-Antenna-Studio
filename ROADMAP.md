@@ -217,6 +217,20 @@ principal-plane AR and tilt-angle cuts with a 3 dB CP reference line.
 
 - **Effort:** Medium (shipped)
 
+### 17. Time-domain transient analysis — *Status: shipped*
+
+Frequency-domain IFFT-based transient analysis at the antenna feed
+point.  Runs a dense MoM sweep across a user-specified band, computes
+the transfer function (reflection Γ(f), input voltage Z/(Z+Z₀), or
+feed current 1/Z(f)), multiplies by the spectrum of a user-chosen
+excitation pulse (Gaussian, RC step, or modulated Gaussian), and
+inverse-FFTs to the time domain.  Frontend "Transient" tab shows the
+time-domain waveform with excitation overlay, |H(f)| and phase plots,
+plus headline metrics (peak amplitude, peak time, ringdown time to
+-20 dB, and pulse FWHM).  Uses gonum/dsp/fourier for the FFT.
+
+- **Effort:** Medium (shipped)
+
 ---
 
 ## Polish (interleave throughout)

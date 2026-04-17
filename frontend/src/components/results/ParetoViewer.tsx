@@ -12,7 +12,7 @@
 import React, { useState, useCallback } from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import { runParetoOptimizer } from '@/api/client';
-import type { OptimVariable, ParetoObjective, ParetoResult, ParetoSolution } from '@/types';
+import type { OptimVariable, ParetoObjective, ParetoSolution } from '@/types';
 
 const METRICS = [
   { value: 'swr', label: 'SWR', defaultDir: 'minimize' as const },
@@ -134,14 +134,13 @@ const ParetoViewer: React.FC = () => {
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
   const updateWire = useAntennaStore((s) => s.updateWire);
 
-  // Variables (reuse same structure as PSO optimizer)
-  const [variables, setVariables] = useState<OptimVariable[]>([]);
+  // Variables (persisted in store)
+  const variables = useAntennaStore((s) => s.paretoVariables);
+  const setVariables = useAntennaStore((s) => s.setParetoVariables);
 
-  // Objectives (at least 2)
-  const [objectives, setObjectives] = useState<ParetoObjective[]>([
-    { metric: 'swr', direction: 'minimize' },
-    { metric: 'gain', direction: 'maximize' },
-  ]);
+  // Objectives (persisted in store, at least 2)
+  const objectives = useAntennaStore((s) => s.paretoObjectives);
+  const setObjectives = useAntennaStore((s) => s.setParetoObjectives);
 
   // Band settings
   const [useBand, setUseBand] = useState(false);
@@ -157,8 +156,9 @@ const ParetoViewer: React.FC = () => {
   const [xAxis, setXAxis] = useState('swr');
   const [yAxis, setYAxis] = useState('gain');
 
-  // State
-  const [result, setResult] = useState<ParetoResult | null>(null);
+  // State (result persisted in store)
+  const result = useAntennaStore((s) => s.paretoResult);
+  const setParetoResult = useAntennaStore((s) => s.setParetoResult);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -168,25 +168,25 @@ const ParetoViewer: React.FC = () => {
     if (wires.length === 0) return;
     const w = wires[0];
     const current = getWireFieldValue(w as unknown as Record<string, number>, 'z2');
-    setVariables((prev) => [
-      ...prev,
+    setVariables([
+      ...variables,
       {
-        name: `var_${prev.length + 1}`,
+        name: `var_${variables.length + 1}`,
         wire_index: 0,
         field: 'z2',
         min: current * 0.75,
         max: current * 1.25,
       },
     ]);
-  }, [wires]);
+  }, [wires, variables, setVariables]);
 
   const removeVariable = useCallback((idx: number) => {
-    setVariables((prev) => prev.filter((_, i) => i !== idx));
-  }, []);
+    setVariables(variables.filter((_, i) => i !== idx));
+  }, [variables, setVariables]);
 
   const updateVariable = useCallback((idx: number, patch: Partial<OptimVariable>) => {
-    setVariables((prev) =>
-      prev.map((v, i) => {
+    setVariables(
+      variables.map((v, i) => {
         if (i !== idx) return v;
         const updated = { ...v, ...patch };
         if (patch.wire_index !== undefined || patch.field !== undefined) {
@@ -206,7 +206,7 @@ const ParetoViewer: React.FC = () => {
         return updated;
       }),
     );
-  }, [wires]);
+  }, [wires, variables, setVariables]);
 
   // ─── Auto-generate Yagi variables ─────────
   const autoYagi = useCallback(() => {
@@ -236,26 +236,26 @@ const ParetoViewer: React.FC = () => {
       }
     }
     setVariables(newVars);
-  }, [wires]);
+  }, [wires, setVariables]);
 
   // ─── Objective management ─────────────────
   const addObjective = useCallback(() => {
     const unused = METRICS.find((m) => !objectives.some((o) => o.metric === m.value));
     if (unused) {
-      setObjectives((prev) => [...prev, { metric: unused.value, direction: unused.defaultDir }]);
+      setObjectives([...objectives, { metric: unused.value, direction: unused.defaultDir }]);
     }
-  }, [objectives]);
+  }, [objectives, setObjectives]);
 
   const removeObjective = useCallback((idx: number) => {
     if (objectives.length <= 2) return; // must have at least 2
-    setObjectives((prev) => prev.filter((_, i) => i !== idx));
-  }, [objectives]);
+    setObjectives(objectives.filter((_, i) => i !== idx));
+  }, [objectives, setObjectives]);
 
   const updateObjective = useCallback((idx: number, patch: Partial<ParetoObjective>) => {
-    setObjectives((prev) =>
-      prev.map((o, i) => (i === idx ? { ...o, ...patch } : o)),
+    setObjectives(
+      objectives.map((o, i) => (i === idx ? { ...o, ...patch } : o)),
     );
-  }, []);
+  }, [objectives, setObjectives]);
 
   // ─── Run optimizer ─────────────────
   const handleRun = useCallback(async () => {
@@ -278,7 +278,7 @@ const ParetoViewer: React.FC = () => {
           generations,
         },
       );
-      setResult(res);
+      setParetoResult(res);
       setSelectedIdx(0);
       // Auto-set scatter axes to first two objectives
       if (res.objectives.length >= 2) {
@@ -291,7 +291,7 @@ const ParetoViewer: React.FC = () => {
       setLoading(false);
     }
   }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance,
-      variables, objectives, useBand, bandStart, bandEnd, bandSteps, popSize, generations]);
+      variables, objectives, useBand, bandStart, bandEnd, bandSteps, popSize, generations, setParetoResult]);
 
   // ─── Apply selected solution ─────────────────
   const selectedSolution = result && result.front.length > selectedIdx ? result.front[selectedIdx] : null;

@@ -11,7 +11,7 @@
 import React, { useState, useCallback } from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import { runOptimizer } from '@/api/client';
-import type { OptimVariable, OptimGoal, OptimResult } from '@/types';
+import type { OptimVariable, OptimGoal } from '@/types';
 
 // Available metrics the user can target
 const METRICS = [
@@ -42,12 +42,12 @@ const OptimizerViewer: React.FC = () => {
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
   const updateWire = useAntennaStore((s) => s.updateWire);
 
-  // Variables
-  const [variables, setVariables] = useState<OptimVariable[]>([]);
-  // Goals
-  const [goals, setGoals] = useState<OptimGoal[]>([
-    { metric: 'swr', target: 1.0, weight: 10 },
-  ]);
+  // Variables (persisted in store)
+  const variables = useAntennaStore((s) => s.optimVariables);
+  const setVariables = useAntennaStore((s) => s.setOptimVariables);
+  // Goals (persisted in store)
+  const goals = useAntennaStore((s) => s.optimGoals);
+  const setGoals = useAntennaStore((s) => s.setOptimGoals);
   // Band settings
   const [useBand, setUseBand] = useState(false);
   const [bandStart, setBandStart] = useState(frequency.freqStart || frequency.frequencyMhz - 0.5);
@@ -56,8 +56,9 @@ const OptimizerViewer: React.FC = () => {
   // PSO settings
   const [particles, setParticles] = useState(20);
   const [iterations, setIterations] = useState(40);
-  // State
-  const [result, setResult] = useState<OptimResult | null>(null);
+  // State (result persisted in store)
+  const result = useAntennaStore((s) => s.optimResult);
+  const setOptimResult = useAntennaStore((s) => s.setOptimResult);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -66,25 +67,25 @@ const OptimizerViewer: React.FC = () => {
     if (wires.length === 0) return;
     const w = wires[0];
     const current = getWireFieldValue(w, 'z2');
-    setVariables((prev) => [
-      ...prev,
+    setVariables([
+      ...variables,
       {
-        name: `var_${prev.length + 1}`,
+        name: `var_${variables.length + 1}`,
         wire_index: 0,
         field: 'z2',
         min: current * 0.75,
         max: current * 1.25,
       },
     ]);
-  }, [wires]);
+  }, [wires, variables, setVariables]);
 
   const removeVariable = useCallback((idx: number) => {
-    setVariables((prev) => prev.filter((_, i) => i !== idx));
-  }, []);
+    setVariables(variables.filter((_, i) => i !== idx));
+  }, [variables, setVariables]);
 
   const updateVariable = useCallback((idx: number, patch: Partial<OptimVariable>) => {
-    setVariables((prev) =>
-      prev.map((v, i) => {
+    setVariables(
+      variables.map((v, i) => {
         if (i !== idx) return v;
         const updated = { ...v, ...patch };
         // Auto-update bounds when wire/field changes
@@ -105,28 +106,28 @@ const OptimizerViewer: React.FC = () => {
         return updated;
       }),
     );
-  }, [wires]);
+  }, [wires, variables, setVariables]);
 
   // ─── Goal management ─────────────────
   const addGoal = useCallback(() => {
     const unused = METRICS.find((m) => !goals.some((g) => g.metric === m.value));
     if (unused) {
-      setGoals((prev) => [
-        ...prev,
+      setGoals([
+        ...goals,
         { metric: unused.value, target: unused.defaultTarget, weight: unused.defaultWeight },
       ]);
     }
-  }, [goals]);
+  }, [goals, setGoals]);
 
   const removeGoal = useCallback((idx: number) => {
-    setGoals((prev) => prev.filter((_, i) => i !== idx));
-  }, []);
+    setGoals(goals.filter((_, i) => i !== idx));
+  }, [goals, setGoals]);
 
   const updateGoal = useCallback((idx: number, patch: Partial<OptimGoal>) => {
-    setGoals((prev) =>
-      prev.map((g, i) => (i === idx ? { ...g, ...patch } : g)),
+    setGoals(
+      goals.map((g, i) => (i === idx ? { ...g, ...patch } : g)),
     );
-  }, []);
+  }, [goals, setGoals]);
 
   // ─── Auto-generate Yagi variables ─────────
   const autoYagi = useCallback(() => {
@@ -158,7 +159,7 @@ const OptimizerViewer: React.FC = () => {
       }
     }
     setVariables(newVars);
-  }, [wires]);
+  }, [wires, setVariables]);
 
   // ─── Run optimizer ─────────────────
   const handleRun = useCallback(async () => {
@@ -181,14 +182,14 @@ const OptimizerViewer: React.FC = () => {
           iterations,
         },
       );
-      setResult(res);
+      setOptimResult(res);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
   }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance,
-      variables, goals, useBand, bandStart, bandEnd, bandSteps, particles, iterations]);
+      variables, goals, useBand, bandStart, bandEnd, bandSteps, particles, iterations, setOptimResult]);
 
   // ─── Apply optimised geometry ─────────────────
   const handleApply = useCallback(() => {

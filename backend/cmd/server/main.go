@@ -65,6 +65,7 @@ func main() {
 	router.POST("/api/cma", api.HandleCMA)
 	router.POST("/api/optimize", api.HandleOptimize)
 	router.POST("/api/pareto-optimize", api.HandleParetoOptimize)
+	router.POST("/api/transient", api.HandleTransient)
 
 	bundler.Register(router)
 

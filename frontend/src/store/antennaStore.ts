@@ -19,6 +19,13 @@ import type {
   SimulationResult,
   SweepResult,
   DisplayUnit,
+  CMAResult,
+  OptimResult,
+  OptimVariable,
+  OptimGoal,
+  ParetoResult,
+  ParetoObjective,
+  TransientResult,
 } from '@/types';
 
 /** Full shape of the Zustand store: state fields + action methods. */
@@ -45,6 +52,22 @@ interface AntennaState {
   /** Persisted 3D-pattern camera state so zoom/pan survive tab switches. */
   patternCamera: { position: [number, number, number]; target: [number, number, number] } | null;
 
+  /** Cached CMA result so it survives tab switches. */
+  cmaResult: CMAResult | null;
+
+  /** Cached single-objective optimizer result + config. */
+  optimResult: OptimResult | null;
+  optimVariables: OptimVariable[];
+  optimGoals: OptimGoal[];
+
+  /** Cached Pareto multi-objective result + config. */
+  paretoResult: ParetoResult | null;
+  paretoVariables: OptimVariable[];
+  paretoObjectives: ParetoObjective[];
+
+  /** Cached transient analysis result. */
+  transientResult: TransientResult | null;
+
   setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
@@ -66,6 +89,14 @@ interface AntennaState {
   setSimulating: (value: boolean) => void;
   setError: (error: string | null) => void;
   setPatternCamera: (cam: { position: [number, number, number]; target: [number, number, number] }) => void;
+  setCmaResult: (result: CMAResult | null) => void;
+  setOptimResult: (result: OptimResult | null) => void;
+  setOptimVariables: (vars: OptimVariable[]) => void;
+  setOptimGoals: (goals: OptimGoal[]) => void;
+  setParetoResult: (result: ParetoResult | null) => void;
+  setParetoVariables: (vars: OptimVariable[]) => void;
+  setParetoObjectives: (objs: ParetoObjective[]) => void;
+  setTransientResult: (result: TransientResult | null) => void;
 }
 
 const defaultWireId = uuidv4();
@@ -122,6 +153,17 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   simulationResultSeq: 0,
   sweepResultSeq: 0,
   patternCamera: null,
+  cmaResult: null,
+  optimResult: null,
+  optimVariables: [],
+  optimGoals: [{ metric: 'swr', target: 1.0, weight: 10 }],
+  paretoResult: null,
+  paretoVariables: [],
+  paretoObjectives: [
+    { metric: 'swr', direction: 'minimize' },
+    { metric: 'gain', direction: 'maximize' },
+  ],
+  transientResult: null,
 
   // --- Actions ---
 
@@ -214,6 +256,10 @@ export const useAntennaStore = create<AntennaState>((set) => ({
       selectedWireId: data.wires.length > 0 ? data.wires[0].id : null,
       simulationResult: null,
       sweepResult: null,
+      cmaResult: null,
+      optimResult: null,
+      paretoResult: null,
+      transientResult: null,
       error: null,
     }),
 
@@ -231,4 +277,12 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   setSimulating: (value) => set({ isSimulating: value }),
   setError: (error) => set({ error }),
   setPatternCamera: (cam) => set({ patternCamera: cam }),
+  setCmaResult: (result) => set({ cmaResult: result }),
+  setOptimResult: (result) => set({ optimResult: result }),
+  setOptimVariables: (vars) => set({ optimVariables: vars }),
+  setOptimGoals: (goals) => set({ optimGoals: goals }),
+  setParetoResult: (result) => set({ paretoResult: result }),
+  setParetoVariables: (vars) => set({ paretoVariables: vars }),
+  setParetoObjectives: (objs) => set({ paretoObjectives: objs }),
+  setTransientResult: (result) => set({ transientResult: result }),
 }));

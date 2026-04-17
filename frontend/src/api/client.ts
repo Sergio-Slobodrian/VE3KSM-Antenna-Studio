@@ -21,6 +21,7 @@ import type {
   OptimResult,
   ParetoObjective,
   ParetoResult,
+  TransientResult,
   Template,
 } from '@/types';
 
@@ -498,6 +499,50 @@ export async function runOptimizer(
     seed: options?.seed ?? 0,
   };
   return fetchJson<OptimResult>('/api/optimize', body);
+}
+
+// Time-domain transient analysis (POST /api/transient)
+
+/** Run a time-domain transient analysis via frequency-domain IFFT.
+ *  Returns a time-domain waveform at the feed point for the chosen
+ *  excitation pulse and transfer function. */
+export async function computeTransient(
+  wires: Wire[],
+  source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
+  ground: GroundConfig,
+  frequency: FrequencyConfig,
+  referenceImpedance: number,
+  options: {
+    freqStartMhz: number;
+    freqEndMhz: number;
+    numFreqs?: number;
+    pulseType?: string;
+    pulseWidthNs?: number;
+    centerFreqMhz?: number;
+    response?: string;
+  },
+): Promise<TransientResult> {
+  const body = {
+    sim: {
+      wires: buildWires(wires),
+      source: buildSource(source),
+      loads: buildLoads(loads),
+      transmission_lines: buildTLs(transmissionLines),
+      ground: buildGround(ground),
+      frequency_mhz: frequency.frequencyMhz,
+      reference_impedance: referenceImpedance,
+    },
+    freq_start_mhz: options.freqStartMhz,
+    freq_end_mhz: options.freqEndMhz,
+    num_freqs: options.numFreqs ?? 128,
+    pulse_type: options.pulseType ?? 'gaussian',
+    pulse_width_ns: options.pulseWidthNs ?? 2.0,
+    center_freq_mhz: options.centerFreqMhz ?? 0,
+    response: options.response ?? 'reflection',
+  };
+  return fetchJson<TransientResult>('/api/transient', body);
 }
 
 // Pareto multi-objective optimizer (POST /api/pareto-optimize)

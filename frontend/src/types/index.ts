@@ -317,6 +317,26 @@ export interface OptimResult {
   }[];
 }
 
+/** A single sample in a time-domain transient waveform. */
+export interface TransientPoint {
+  time_ns: number;
+  amplitude: number;
+}
+
+/** Result of a time-domain transient analysis via IFFT. */
+export interface TransientResult {
+  waveform: TransientPoint[];
+  excitation: TransientPoint[];
+  frequencies: number[];
+  mag_response: number[];
+  phase_response: number[];
+  peak_amplitude: number;
+  peak_time_ns: number;
+  ringdown_time_ns: number;
+  pulse_fwhm_ns: number;
+  response_type: string;
+}
+
 /** One objective for Pareto multi-objective optimization. */
 export interface ParetoObjective {
   metric: string;

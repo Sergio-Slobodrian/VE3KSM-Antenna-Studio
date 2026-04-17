@@ -326,6 +326,77 @@ func HandleCMA(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// HandleTransient is the Gin handler for POST /api/transient.
+// It runs a frequency sweep across the specified band, then computes
+// the time-domain transient response via IFFT for the chosen excitation
+// pulse and transfer function (reflection, input voltage, or current).
+func HandleTransient(c *gin.Context) {
+	var req TransientAPIRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
+		return
+	}
+
+	if err := req.Sim.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Validate pulse type
+	validPulses := map[string]bool{
+		"":                    true,
+		"gaussian":            true,
+		"step":                true,
+		"modulated_gaussian":  true,
+	}
+	if !validPulses[req.PulseType] {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: fmt.Sprintf("invalid pulse_type %q; must be gaussian, step, or modulated_gaussian", req.PulseType),
+		})
+		return
+	}
+
+	// Validate response type
+	validResponses := map[string]bool{
+		"":           true,
+		"reflection": true,
+		"input":      true,
+		"current":    true,
+	}
+	if !validResponses[req.Response] {
+		c.JSON(http.StatusBadRequest, ErrorResponse{
+			Error: fmt.Sprintf("invalid response %q; must be reflection, input, or current", req.Response),
+		})
+		return
+	}
+
+	// Cap num_freqs to prevent excessive computation
+	if req.NumFreqs > 512 {
+		req.NumFreqs = 512
+	}
+
+	input := simulateRequestToInput(req.Sim)
+
+	transReq := mom.TransientRequest{
+		Input:        input,
+		FreqStartHz:  req.FreqStartMHz * 1e6,
+		FreqEndHz:    req.FreqEndMHz * 1e6,
+		NumFreqs:     req.NumFreqs,
+		PulseType:    req.PulseType,
+		PulseWidthNs: req.PulseWidthNs,
+		CenterFreqHz: req.CenterFreqMHz * 1e6,
+		Response:     req.Response,
+	}
+
+	result, err := mom.ComputeTransient(transReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "transient analysis failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // HandleParetoOptimize is the Gin handler for POST /api/pareto-optimize.
 // It runs an NSGA-II multi-objective optimization that returns a Pareto
 // front of non-dominated trade-off designs.

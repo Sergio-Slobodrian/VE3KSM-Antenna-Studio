@@ -13,7 +13,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import { computeCMA } from '@/api/client';
-import type { CMAResult, CMAMode } from '@/types';
+import type { CMAMode } from '@/types';
 
 /** Jet-style colour map (same as NearFieldViewer) for current magnitudes. */
 function jetColor(t: number): string {
@@ -158,7 +158,8 @@ const CMAViewer: React.FC = () => {
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
 
-  const [result, setResult] = useState<CMAResult | null>(null);
+  const result = useAntennaStore((s) => s.cmaResult);
+  const setCmaResult = useAntennaStore((s) => s.setCmaResult);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState(1);
@@ -171,14 +172,14 @@ const CMAViewer: React.FC = () => {
         wires, source, loads, transmissionLines,
         ground, frequency, referenceImpedance,
       );
-      setResult(res);
+      setCmaResult(res);
       setSelectedMode(1);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
     }
-  }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance]);
+  }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance, setCmaResult]);
 
   const selectedModeData = result?.modes.find((m) => m.index === selectedMode) ?? null;
 

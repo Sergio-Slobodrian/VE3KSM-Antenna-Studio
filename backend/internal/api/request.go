@@ -214,6 +214,21 @@ type ParetoOptimizeRequest struct {
 	Seed         int64                 `json:"seed,omitempty"`
 }
 
+// TransientRequest is the JSON body for POST /api/transient.
+// It specifies a frequency range for the underlying sweep, an excitation
+// pulse shape, and which transfer function (reflection, input voltage,
+// or feed current) to compute in the time domain via IFFT.
+type TransientAPIRequest struct {
+	Sim           SimulateRequest `json:"sim" binding:"required"`
+	FreqStartMHz  float64         `json:"freq_start_mhz" binding:"required,gt=0"`
+	FreqEndMHz    float64         `json:"freq_end_mhz" binding:"required,gtfield=FreqStartMHz"`
+	NumFreqs      int             `json:"num_freqs,omitempty"`
+	PulseType     string          `json:"pulse_type,omitempty"`     // gaussian, step, modulated_gaussian
+	PulseWidthNs  float64         `json:"pulse_width_ns,omitempty"` // pulse sigma or rise-time (ns)
+	CenterFreqMHz float64         `json:"center_freq_mhz,omitempty"` // carrier for modulated Gaussian
+	Response      string          `json:"response,omitempty"`       // reflection, input, current
+}
+
 // validGroundTypes is the set of accepted ground type strings.
 // Empty string is not listed here; Validate() normalizes it to "free_space".
 var validGroundTypes = map[string]bool{

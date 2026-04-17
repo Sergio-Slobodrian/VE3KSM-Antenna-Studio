@@ -29,6 +29,7 @@ import NearFieldViewer from '@/components/results/NearFieldViewer';
 import CMAViewer from '@/components/results/CMAViewer';
 import OptimizerViewer from '@/components/results/OptimizerViewer';
 import ParetoViewer from '@/components/results/ParetoViewer';
+import TransientViewer from '@/components/results/TransientViewer';
 import PolarizationViewer from '@/components/results/PolarizationViewer';
 import WarningsBanner from '@/components/results/WarningsBanner';
 import SweepExport from '@/components/results/SweepExport';
@@ -47,7 +48,8 @@ type Tab =
   | 'polarization'
   | 'cma'
   | 'optimizer'
-  | 'pareto';
+  | 'pareto'
+  | 'transient';
 
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 800;
@@ -108,6 +110,7 @@ const MainLayout: React.FC = () => {
     { id: 'cma', label: 'CMA' },
     { id: 'optimizer', label: 'Optimizer' },
     { id: 'pareto', label: 'Pareto' },
+    { id: 'transient', label: 'Transient' },
   ];
 
   const renderTabContent = () => {
@@ -126,6 +129,7 @@ const MainLayout: React.FC = () => {
       case 'cma': return <CMAViewer />;
       case 'optimizer': return <OptimizerViewer />;
       case 'pareto': return <ParetoViewer />;
+      case 'transient': return <TransientViewer />;
     }
   };
 

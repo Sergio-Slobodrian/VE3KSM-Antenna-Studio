@@ -395,5 +395,6 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 		Loads:              loads,
 		TransmissionLines:  lines,
 		ReferenceImpedance: req.ReferenceImpedance,
+		BasisOrder:         mom.BasisOrder(req.BasisOrder),
 	}
 }

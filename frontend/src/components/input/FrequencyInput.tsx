@@ -89,6 +89,20 @@ const FrequencyInput: React.FC = () => {
           </div>
         </>
       )}
+      <div className="config-row">
+        <label>Basis functions</label>
+        <select
+          value={frequency.basisOrder || ''}
+          onChange={(e) =>
+            setFrequency({ basisOrder: e.target.value as '' | 'triangle' | 'sinusoidal' | 'quadratic' })
+          }
+          style={{ flex: 1 }}
+        >
+          <option value="">Triangle (default)</option>
+          <option value="sinusoidal">Sinusoidal (King-type)</option>
+          <option value="quadratic">Quadratic (Hermite)</option>
+        </select>
+      </div>
     </div>
   );
 };

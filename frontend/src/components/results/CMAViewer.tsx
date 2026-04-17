@@ -125,6 +125,26 @@ const CurrentStrip: React.FC<{ mode: CMAMode }> = ({ mode }) => {
         <span>Segment 0</span>
         <span>Segment {mags.length - 1}</span>
       </div>
+      {/* Jet colour-map legend */}
+      <div style={{ marginTop: 10, maxWidth: 500 }}>
+        <div style={{ fontSize: 11, color: '#aaa', marginBottom: 3 }}>Current magnitude</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: '#888' }}>0</span>
+          <div style={{
+            flex: 1,
+            height: 12,
+            borderRadius: 2,
+            border: '1px solid #555',
+            background: `linear-gradient(to right, ${jetColor(0)}, ${jetColor(0.125)}, ${jetColor(0.25)}, ${jetColor(0.375)}, ${jetColor(0.5)}, ${jetColor(0.625)}, ${jetColor(0.75)}, ${jetColor(0.875)}, ${jetColor(1)})`,
+          }} />
+          <span style={{ fontSize: 10, color: '#888' }}>1</span>
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, color: '#666', marginTop: 1, paddingLeft: 14, paddingRight: 14 }}>
+          <span>low</span>
+          <span>mid</span>
+          <span>high</span>
+        </div>
+      </div>
     </div>
   );
 };

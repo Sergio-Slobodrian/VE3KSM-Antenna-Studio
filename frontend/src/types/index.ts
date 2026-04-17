@@ -108,6 +108,9 @@ export interface GroundConfig {
 /** Sweep solver mode: 'auto' picks interpolated when steps > 32. */
 export type SweepMode = 'auto' | 'exact' | 'interpolated';
 
+/** Basis function order for MoM current expansion. */
+export type BasisOrderType = '' | 'triangle' | 'sinusoidal' | 'quadratic';
+
 /** Frequency settings for single-point simulation or multi-point sweep. */
 export interface FrequencyConfig {
   mode: 'single' | 'sweep';
@@ -121,6 +124,8 @@ export interface FrequencyConfig {
   freqSteps: number;
   /** Sweep solver mode: auto (default), exact, or interpolated. */
   sweepMode: SweepMode;
+  /** Basis function order: '' = triangle (default), 'sinusoidal', 'quadratic'. */
+  basisOrder: BasisOrderType;
 }
 
 /** A single point in the 3D far-field radiation pattern (spherical coords, dB gain). */

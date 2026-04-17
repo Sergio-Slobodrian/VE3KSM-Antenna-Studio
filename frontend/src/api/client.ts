@@ -33,6 +33,7 @@ interface SimulateRequest {
   ground: ReturnType<typeof buildGround>;
   frequency_mhz: number;
   reference_impedance: number;
+  basis_order?: string;
 }
 
 /** POST body for /api/sweep (snake_case keys matching Go backend). */
@@ -47,6 +48,7 @@ interface SweepRequest {
   freq_steps: number;
   reference_impedance: number;
   sweep_mode?: string;
+  basis_order?: string;
 }
 
 // --- Request builders: strip client-only fields (id) and remap key casing ---
@@ -120,6 +122,7 @@ export function buildSimulateRequest(
     ground: buildGround(ground),
     frequency_mhz: frequency.frequencyMhz,
     reference_impedance: referenceImpedance,
+    basis_order: frequency.basisOrder || undefined,
   };
 }
 
@@ -144,7 +147,8 @@ export function buildSweepRequest(
     freq_steps: frequency.freqSteps,
     reference_impedance: referenceImpedance,
     sweep_mode: frequency.sweepMode === 'auto' ? undefined : frequency.sweepMode,
-  };
+    basis_order: frequency.basisOrder || undefined,
+  } as SweepRequest;
 }
 
 /** Generic POST helper; throws on non-2xx status with the response body as message. */
@@ -270,7 +274,7 @@ export async function simulate(request: SimulateRequest): Promise<SimulationResu
   };
 }
 
-/** Run a frequency sweep; returns arrays of SWR, impedance and Γ per frequency step. */
+/** Run a frequency sweep; returns arrays of SWR, impedance per frequency step. */
 export async function sweep(request: SweepRequest): Promise<SweepResult> {
   const raw = await fetchJson<RawSweepResponse>('/api/sweep', request);
   return {
@@ -338,7 +342,7 @@ export async function generateTemplate(
   return { wires, source, ground };
 }
 
-// ───────── Near-field E/H computation (POST /api/nearfield) ─────────
+// Near-field E/H computation (POST /api/nearfield)
 
 /** Grid specification for a near-field observation plane. */
 export interface NearFieldGrid {
@@ -379,7 +383,7 @@ export async function computeNearField(
   return fetchJson<NearFieldResult>('/api/nearfield', body);
 }
 
-// ───────── Characteristic Mode Analysis (POST /api/cma) ─────────
+// Characteristic Mode Analysis (POST /api/cma)
 
 /** Run Characteristic Mode Analysis at the current single frequency.
  *  CMA is source-free, but the backend still requires a valid source field. */
@@ -404,7 +408,7 @@ export async function computeCMA(
   return fetchJson<CMAResult>('/api/cma', body);
 }
 
-// ───────── Optimizer (POST /api/optimize) ─────────
+// Optimizer (POST /api/optimize)
 
 /** Run PSO optimisation on the current antenna geometry.
  *  Variables define which wire properties to tune and their bounds.
@@ -450,14 +454,14 @@ export async function runOptimizer(
   return fetchJson<OptimResult>('/api/optimize', body);
 }
 
-// ───────── Matching network designer (POST /api/match) ─────────
+// Matching network designer (POST /api/match)
 
 /** A single passive component in a match-network solution. */
 export interface MatchComponent {
   kind: 'L' | 'C' | 'R' | 'shorted_stub' | 'open_stub' | 'transformer';
   position: 'series' | 'shunt';
-  value: number;     // henries / farads / ohms (kind-dependent)
-  reactance: number; // ohms at the design frequency
+  value: number;
+  reactance: number;
   label: string;
 }
 
@@ -505,4 +509,3 @@ export async function designMatch(opts: {
     q_factor: opts.qFactor ?? 0,
   });
 }
-

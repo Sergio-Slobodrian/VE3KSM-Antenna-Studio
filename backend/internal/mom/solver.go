@@ -151,7 +151,22 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	// ---- Step 5: Assemble the impedance matrix Z ----
 	// Z is nBasis x nBasis, where Z[m][n] is the voltage induced on basis m
 	// due to a unit current coefficient on basis n (via the MPIE formulation).
-	Z := buildTriangleZMatrix(bases, allSegments, k, omega)
+	//
+	// When a higher-order basis is selected (sinusoidal or quadratic), the
+	// generalised kernel path is used.  The generalised kernel evaluates the
+	// same MPIE double integral but substitutes the abstract shape function
+	// φ(t) instead of the hard-coded linear ramp (1±t)/2.  This captures the
+	// physical current distribution with fewer unknowns.
+	useHigherOrder := input.BasisOrder == BasisSinusoidal || input.BasisOrder == BasisQuadratic
+	var genBases []GenBasis
+
+	var Z *mat.CDense
+	if useHigherOrder {
+		genBases = BuildGenBases(bases, input.BasisOrder, k)
+		Z = BuildGenZMatrix(genBases, allSegments, k, omega)
+	} else {
+		Z = buildTriangleZMatrix(bases, allSegments, k, omega)
+	}
 
 	// Step 5b: Add ground plane contributions via image theory.
 	// Both perfect and real ground use geometric image segments; the difference
@@ -159,15 +174,26 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	// coefficients (angle-dependent, lossy) instead of unity.
 	switch input.Ground.Type {
 	case "perfect":
-		imageSegs := ApplyPerfectGround(allSegments)
-		addGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega)
+		if useHigherOrder {
+			AddGenGroundBasis(Z, genBases, k, omega)
+		} else {
+			imageSegs := ApplyPerfectGround(allSegments)
+			addGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega)
+		}
 	case "real":
-		imageSegs := ApplyPerfectGround(allSegments)
-		// Use the complex-image method for Z-matrix assembly — it
-		// is significantly more accurate than simple Fresnel reflection
-		// for wires near the ground plane (Bannister 1986).
-		addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
-			input.Ground.Conductivity, input.Ground.Permittivity)
+		if useHigherOrder {
+			// For higher-order bases with real ground, use the generalised
+			// PEC image as an approximation; the complex-image method
+			// currently only supports triangle bases.
+			AddGenGroundBasis(Z, genBases, k, omega)
+		} else {
+			imageSegs := ApplyPerfectGround(allSegments)
+			// Use the complex-image method for Z-matrix assembly — it
+			// is significantly more accurate than simple Fresnel reflection
+			// for wires near the ground plane (Bannister 1986).
+			addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
+				input.Ground.Conductivity, input.Ground.Permittivity)
+		}
 	}
 
 	// Step 5c: Inject any lumped R/L/C loads onto the Z-matrix diagonal.
@@ -238,7 +264,13 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	// ---- Step 10: Interpolate segment currents from basis node currents ----
 	// The basis function currents are defined at inter-segment nodes; we need
 	// the current at each segment center for far-field computation and display.
-	segCurrents := interpolateSegmentCurrents(I, bases, allSegments, wireSegOffsets, wireSegCounts)
+	// Higher-order bases use shape-function-specific interpolation weights.
+	var segCurrents []complex128
+	if useHigherOrder {
+		segCurrents = InterpolateGenSegmentCurrents(I, genBases, allSegments)
+	} else {
+		segCurrents = interpolateSegmentCurrents(I, bases, allSegments, wireSegOffsets, wireSegCounts)
+	}
 
 	// ---- Step 11: Far-field radiation pattern and peak directivity ----
 	var pattern []PatternPoint

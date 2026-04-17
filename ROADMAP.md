@@ -154,12 +154,16 @@ including per-wire skin-effect via LD type 5.  Frontend has
 
 - **Effort:** Medium (shipped)
 
-### 12. Higher-order basis functions
+### 12. Higher-order basis functions — *Status: shipped*
 
-Quadratic or hierarchical Legendre basis cuts unknown count 3–5× for
-the same accuracy.  Pairs naturally with the iterative solver.
+Piecewise-sinusoidal (King-type) and piecewise-quadratic (Hermite)
+basis functions alongside the default triangle (rooftop) basis.
+Generalised MPIE kernel with abstract shape-function evaluation,
+12-point quadrature for non-triangle bases, concurrent Z-matrix
+assembly, and shape-function-specific current interpolation.
+Frontend exposes a basis-function selector in the frequency panel.
 
-- **Effort:** High
+- **Effort:** High (shipped)
 
 ### 13. Optimization loop (PSO / differential evolution) — *Status: shipped*
 

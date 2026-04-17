@@ -23,6 +23,9 @@ type SimulateRequest struct {
 	// ReferenceImpedance (Ω) for VSWR and Smith-chart reflection coefficient.
 	// Zero or omitted → 50 Ω default.
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
+	// BasisOrder selects the current expansion: "" or "triangle" (default),
+	// "sinusoidal" (King-type), or "quadratic" (Hermite).
+	BasisOrder string `json:"basis_order,omitempty"`
 }
 
 // LoadDTO describes a lumped R/L/C load attached to a single segment.
@@ -119,6 +122,8 @@ type SweepRequest struct {
 	SweepAnchors int    `json:"sweep_anchors,omitempty"`
 	// ReferenceImpedance (Ω) for VSWR.  Zero or omitted → 50 Ω.
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
+	// BasisOrder for the sweep — forwarded to each Simulate() call.
+	BasisOrder string `json:"basis_order,omitempty"`
 }
 
 // ToSimulateRequest converts a SweepRequest into a SimulateRequest using
@@ -133,6 +138,7 @@ func (s *SweepRequest) ToSimulateRequest() SimulateRequest {
 		Loads:              s.Loads,
 		TransmissionLines:  s.TransmissionLines,
 		ReferenceImpedance: s.ReferenceImpedance,
+		BasisOrder:         s.BasisOrder,
 	}
 }
 

@@ -26,6 +26,11 @@ type SimulationInput struct {
 	// calculations.  When zero or negative the solver substitutes
 	// DefaultReferenceImpedance (50 Ω).
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
+	// BasisOrder selects the current expansion function family.
+	// "" or "triangle" = piecewise-linear rooftop (default, classic).
+	// "sinusoidal" = piecewise-sinusoidal King-type (3-5x fewer unknowns).
+	// "quadratic" = piecewise-quadratic Hermite (smooth, higher-order).
+	BasisOrder BasisOrder `json:"basis_order,omitempty"`
 }
 
 // LoadTopology selects how a Load's R, L, and C components are combined.

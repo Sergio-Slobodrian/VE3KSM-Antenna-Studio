@@ -110,6 +110,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     freqEnd: 15.0,
     freqSteps: 50,
     sweepMode: 'auto',
+    basisOrder: '',
   },
   referenceImpedance: 50,
   simulationResult: null,

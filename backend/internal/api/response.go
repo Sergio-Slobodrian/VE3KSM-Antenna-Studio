@@ -13,9 +13,10 @@ type SimulateResponse struct {
 	Reflection         ReflectionDTO       `json:"reflection"`          // Γ at ReferenceImpedance, complex (Smith-chart input)
 	ReferenceImpedance float64             `json:"reference_impedance"` // Z₀ used for SWR / reflection (Ω)
 	GainDBi            float64             `json:"gain_dbi"`
-	Metrics            mom.FarFieldMetrics `json:"metrics"`             // F/B, beamwidth, sidelobe level, efficiency
-	PolarCuts          mom.PolarCuts       `json:"polar_cuts"`          // azimuth + elevation 2D cuts
-	Pattern            []PatternDTO        `json:"pattern"`
+	Metrics            mom.FarFieldMetrics      `json:"metrics"`             // F/B, beamwidth, sidelobe level, efficiency
+	PolarCuts          mom.PolarCuts            `json:"polar_cuts"`          // azimuth + elevation 2D cuts
+	Polarization       mom.PolarizationMetrics  `json:"polarization"`        // axial ratio, tilt, sense per direction
+	Pattern            []PatternDTO             `json:"pattern"`
 	Currents           []CurrentDTO        `json:"currents"`
 	Warnings           []mom.Warning       `json:"warnings,omitempty"`  // non-blocking accuracy warnings
 }
@@ -102,6 +103,7 @@ func SolverResultToResponse(r *mom.SolverResult) SimulateResponse {
 		GainDBi:            r.GainDBi,
 		Metrics:            r.Metrics,
 		PolarCuts:          r.Cuts,
+		Polarization:       r.Polarization,
 		Pattern:            pattern,
 		Currents:           currents,
 		Warnings:           r.Warnings,

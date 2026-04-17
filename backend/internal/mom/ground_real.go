@@ -160,7 +160,7 @@ func basisVerticalFraction(b TriangleBasis) float64 {
 //
 // Total power is integrated over the upper hemisphere WITHOUT doubling
 // (unlike perfect ground), because the lossy ground absorbs some power.
-func ComputeFarFieldRealGround(realSegs, imageSegs []Segment, currents []complex128, k, omega, sigma, epsilonR float64) ([]PatternPoint, float64) {
+func ComputeFarFieldRealGround(realSegs, imageSegs []Segment, currents []complex128, k, omega, sigma, epsilonR float64) ([]PatternPoint, float64, []complex128, []complex128) {
 	const (
 		thetaStep = 2.0
 		phiStep   = 2.0
@@ -176,6 +176,8 @@ func ComputeFarFieldRealGround(realSegs, imageSegs []Segment, currents []complex
 	pattern := make([]PatternPoint, 0, total)
 	eSquared := make([]float64, 0, total)
 	thetaRads := make([]float64, 0, total)
+	allETheta := make([]complex128, 0, total)
+	allEPhi := make([]complex128, 0, total)
 	maxEsq := 0.0
 
 	for it := 0; it < nTheta; it++ {
@@ -191,13 +193,12 @@ func ComputeFarFieldRealGround(realSegs, imageSegs []Segment, currents []complex
 			cosPhi := math.Cos(phiRad)
 
 			var esq float64
+			var eTheta, ePhi complex128
 
 			if theta <= 90.0 {
 				rHat := [3]float64{sinTheta * cosPhi, sinTheta * sinPhi, cosTheta}
 				thetaHat := [3]float64{cosTheta * cosPhi, cosTheta * sinPhi, -sinTheta}
 				phiHat := [3]float64{-sinPhi, cosPhi, 0}
-
-				var eTheta, ePhi complex128
 
 				// Direct contributions from real segments
 				for n, seg := range realSegs {
@@ -269,6 +270,8 @@ func ComputeFarFieldRealGround(realSegs, imageSegs []Segment, currents []complex
 
 			eSquared = append(eSquared, esq)
 			thetaRads = append(thetaRads, thetaRad)
+			allETheta = append(allETheta, eTheta)
+			allEPhi = append(allEPhi, ePhi)
 			pattern = append(pattern, PatternPoint{ThetaDeg: theta, PhiDeg: phi, GainDB: 0})
 		}
 	}
@@ -300,5 +303,5 @@ func ComputeFarFieldRealGround(realSegs, imageSegs []Segment, currents []complex
 		}
 	}
 
-	return pattern, gainDBi
+	return pattern, gainDBi, allETheta, allEPhi
 }

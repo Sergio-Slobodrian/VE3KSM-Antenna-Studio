@@ -172,6 +172,31 @@ export interface PolarCuts {
   fixedAzimuthDeg: number;
 }
 
+/** Polarisation state at a single far-field observation direction. */
+export interface PolarizationPoint {
+  theta: number;
+  phi: number;
+  axialRatioDb: number;
+  tiltDeg: number;
+  polType: 'linear' | 'circular' | 'elliptical';
+  sense: 'RHCP' | 'LHCP' | '';
+}
+
+/** Aggregate polarisation metrics + principal-plane AR cuts. */
+export interface PolarizationMetrics {
+  peakAxialRatioDb: number;
+  peakTiltDeg: number;
+  peakPolType: 'linear' | 'circular' | 'elliptical';
+  peakSense: 'RHCP' | 'LHCP' | '';
+  azimuthDeg: number[];
+  azimuthArDb: number[];
+  azimuthTiltDeg: number[];
+  elevationDeg: number[];
+  elevationArDb: number[];
+  elevationTiltDeg: number[];
+  points: PolarizationPoint[];
+}
+
 /** Non-blocking accuracy warnings from the MoM segmentation validator. */
 export interface Warning {
   code: string;
@@ -197,6 +222,8 @@ export interface SimulationResult {
   metrics: FarFieldMetrics;
   /** Azimuth + elevation 2D cuts for polar plotting. */
   polarCuts: PolarCuts;
+  /** Polarisation analysis: axial ratio, tilt, sense per direction. */
+  polarization: PolarizationMetrics;
   /** 3D far-field radiation pattern sampled on a theta/phi grid. */
   pattern: PatternPoint[];
   /** Current distribution across all wire segments. */

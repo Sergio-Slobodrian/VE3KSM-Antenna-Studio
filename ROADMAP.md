@@ -192,6 +192,17 @@ range.  Supports free-space and PEC ground (image contributions).
 
 - **Effort:** Medium (shipped)
 
+### 16. Polarization analysis — *Status: shipped*
+
+Full Stokes-parameter polarisation analysis derived from complex Eθ/Eφ
+far-field components.  Computes axial ratio (dB), tilt angle, polarisation
+type (linear / circular / elliptical), and rotation sense (RHCP / LHCP)
+at every pattern direction.  Frontend "Polarization" tab shows headline
+metrics at peak-gain, a polarisation ellipse visualisation, and
+principal-plane AR and tilt-angle cuts with a 3 dB CP reference line.
+
+- **Effort:** Medium (shipped)
+
 ---
 
 ## Polish (interleave throughout)

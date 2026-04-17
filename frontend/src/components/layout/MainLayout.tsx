@@ -28,6 +28,7 @@ import MatchingNetwork from '@/components/results/MatchingNetwork';
 import NearFieldViewer from '@/components/results/NearFieldViewer';
 import CMAViewer from '@/components/results/CMAViewer';
 import OptimizerViewer from '@/components/results/OptimizerViewer';
+import PolarizationViewer from '@/components/results/PolarizationViewer';
 import WarningsBanner from '@/components/results/WarningsBanner';
 import SweepExport from '@/components/results/SweepExport';
 
@@ -42,6 +43,7 @@ type Tab =
   | 'currents'
   | 'matching'
   | 'nearfield'
+  | 'polarization'
   | 'cma'
   | 'optimizer';
 
@@ -100,6 +102,7 @@ const MainLayout: React.FC = () => {
     { id: 'currents', label: 'Currents' },
     { id: 'matching', label: 'Matching' },
     { id: 'nearfield', label: 'Near-Field' },
+    { id: 'polarization', label: 'Polarization' },
     { id: 'cma', label: 'CMA' },
     { id: 'optimizer', label: 'Optimizer' },
   ];
@@ -116,6 +119,7 @@ const MainLayout: React.FC = () => {
       case 'currents': return <CurrentDisplay />;
       case 'matching': return <MatchingNetwork />;
       case 'nearfield': return <NearFieldViewer />;
+      case 'polarization': return <PolarizationViewer />;
       case 'cma': return <CMAViewer />;
       case 'optimizer': return <OptimizerViewer />;
     }

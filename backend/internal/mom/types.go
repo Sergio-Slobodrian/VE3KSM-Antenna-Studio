@@ -117,10 +117,11 @@ type SolverResult struct {
 	Reflection         complex128       `json:"-"`                   // complex reflection coefficient Γ at ReferenceImpedance
 	ReferenceImpedance float64          `json:"reference_impedance"` // Z₀ used for SWR / Γ (Ω)
 	GainDBi            float64          `json:"gain_dbi"`            // peak directivity in dBi
-	Pattern            []PatternPoint   `json:"pattern"`             // far-field radiation pattern samples
-	Metrics            FarFieldMetrics  `json:"metrics"`             // F/B, beamwidth, sidelobe, efficiency
-	Cuts               PolarCuts        `json:"polar_cuts"`          // azimuth & elevation 2D cuts
-	Warnings           []Warning        `json:"warnings,omitempty"`  // non-blocking accuracy heuristics
+	Pattern            []PatternPoint      `json:"pattern"`             // far-field radiation pattern samples
+	Metrics            FarFieldMetrics     `json:"metrics"`             // F/B, beamwidth, sidelobe, efficiency
+	Cuts               PolarCuts           `json:"polar_cuts"`          // azimuth & elevation 2D cuts
+	Polarization       PolarizationMetrics `json:"polarization"`        // axial ratio, tilt, sense per direction
+	Warnings           []Warning           `json:"warnings,omitempty"`  // non-blocking accuracy heuristics
 }
 
 // CurrentEntry holds the current phasor for one segment, decomposed into

@@ -275,19 +275,20 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	// ---- Step 11: Far-field radiation pattern and peak directivity ----
 	var pattern []PatternPoint
 	var gainDBi float64
+	var ffETheta, ffEPhi []complex128 // complex E-field components for polarisation analysis
 	switch input.Ground.Type {
 	case "perfect":
 		// Perfect ground: image contributions with unity reflection, upper hemisphere only
 		imageSegs := ApplyPerfectGround(allSegments)
-		pattern, gainDBi = ComputeFarFieldWithGround(allSegments, imageSegs, segCurrents, k)
+		pattern, gainDBi, ffETheta, ffEPhi = ComputeFarFieldWithGround(allSegments, imageSegs, segCurrents, k)
 	case "real":
 		// Real ground: image contributions scaled by Fresnel coefficients, upper hemisphere only
 		imageSegs := ApplyPerfectGround(allSegments)
-		pattern, gainDBi = ComputeFarFieldRealGround(allSegments, imageSegs, segCurrents, k, omega,
+		pattern, gainDBi, ffETheta, ffEPhi = ComputeFarFieldRealGround(allSegments, imageSegs, segCurrents, k, omega,
 			input.Ground.Conductivity, input.Ground.Permittivity)
 	default:
 		// Free space: full sphere
-		pattern, gainDBi = ComputeFarField(allSegments, segCurrents, k)
+		pattern, gainDBi, ffETheta, ffEPhi = ComputeFarField(allSegments, segCurrents, k)
 	}
 
 	// ---- Step 12: Package output ----
@@ -372,6 +373,9 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		}
 	}
 
+	// ---- Step 12c: Polarisation analysis from complex E-field components ----
+	polarization := ComputePolarization(pattern, ffETheta, ffEPhi)
+
 	return &SolverResult{
 		Currents:           currents,
 		Impedance:          impedance,
@@ -382,6 +386,7 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		Pattern:            pattern,
 		Metrics:            metrics,
 		Cuts:               cuts,
+		Polarization:       polarization,
 		Warnings:           warnings,
 	}, nil
 }

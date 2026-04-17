@@ -235,7 +235,7 @@ func TestComputeFarFieldShortDipole(t *testing.T) {
 	currents := []complex128{complex(1, 0)}
 	k := 2 * math.Pi / 1.0
 
-	pattern, gainDBi := ComputeFarField(segs, currents, k)
+	pattern, gainDBi, _, _ := ComputeFarField(segs, currents, k)
 
 	// Check that pattern is not empty
 	if len(pattern) == 0 {
@@ -319,7 +319,7 @@ func TestComputeFarFieldWithGroundBelowHorizon(t *testing.T) {
 	currents := []complex128{complex(1, 0)}
 	k := 2 * math.Pi / 1.0
 
-	pattern, _ := ComputeFarFieldWithGround(realSegs, imageSegs, currents, k)
+	pattern, _, _, _ := ComputeFarFieldWithGround(realSegs, imageSegs, currents, k)
 
 	for _, p := range pattern {
 		if p.ThetaDeg > 90 {
@@ -349,8 +349,8 @@ func TestComputeFarFieldWithGroundHigherGain(t *testing.T) {
 	currents := []complex128{complex(1, 0)}
 	k := 2 * math.Pi / 1.0
 
-	_, gainFreeSpace := ComputeFarField(realSegs, currents, k)
-	_, gainWithGround := ComputeFarFieldWithGround(realSegs, imageSegs, currents, k)
+	_, gainFreeSpace, _, _ := ComputeFarField(realSegs, currents, k)
+	_, gainWithGround, _, _ := ComputeFarFieldWithGround(realSegs, imageSegs, currents, k)
 
 	if gainWithGround <= gainFreeSpace {
 		t.Errorf("Ground-plane gain %.2f dBi should exceed free-space gain %.2f dBi",

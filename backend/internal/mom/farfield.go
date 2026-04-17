@@ -33,7 +33,7 @@ import (
 // is evaluated via rectangular quadrature over the grid.
 //
 // Returns the full-sphere pattern and the peak directivity in dBi.
-func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]PatternPoint, float64) {
+func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]PatternPoint, float64, []complex128, []complex128) {
 	const (
 		thetaStep = 2.0              // angular resolution in theta (degrees)
 		phiStep   = 2.0              // angular resolution in phi (degrees)
@@ -47,6 +47,8 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 	pattern := make([]PatternPoint, 0, total)
 	eSquared := make([]float64, 0, total)   // |E|² at each sample point
 	thetaRads := make([]float64, 0, total)  // theta in radians (for integration weights)
+	allETheta := make([]complex128, 0, total) // complex Eθ for polarisation analysis
+	allEPhi := make([]complex128, 0, total)   // complex Eφ for polarisation analysis
 	maxEsq := 0.0
 
 	for it := 0; it < nTheta; it++ {
@@ -111,6 +113,8 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 
 			eSquared = append(eSquared, esq)
 			thetaRads = append(thetaRads, thetaRad)
+			allETheta = append(allETheta, eTheta)
+			allEPhi = append(allEPhi, ePhi)
 
 			if esq > maxEsq {
 				maxEsq = esq
@@ -153,7 +157,7 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 		}
 	}
 
-	return pattern, gainDBi
+	return pattern, gainDBi, allETheta, allEPhi
 }
 
 // ComputeFarFieldWithGround computes the far-field radiation pattern for an
@@ -172,7 +176,7 @@ func ComputeFarField(segments []Segment, currents []complex128, k float64) ([]Pa
 // downward radiation upward, so the total power equals twice the upper
 // hemisphere integral. The directivity formula D = 4pi*|E_max|^2 / P_total
 // then correctly yields the ground-plane gain enhancement.
-func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex128, k float64) ([]PatternPoint, float64) {
+func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex128, k float64) ([]PatternPoint, float64, []complex128, []complex128) {
 	const (
 		thetaStep = 2.0              // angular resolution (degrees)
 		phiStep   = 2.0              // angular resolution (degrees)
@@ -186,6 +190,8 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 	pattern := make([]PatternPoint, 0, total)
 	eSquared := make([]float64, 0, total)  // |E|^2 at each sample point
 	thetaRads := make([]float64, 0, total) // theta in radians for integration
+	allETheta := make([]complex128, 0, total)
+	allEPhi := make([]complex128, 0, total)
 	maxEsq := 0.0
 
 	for it := 0; it < nTheta; it++ {
@@ -201,6 +207,7 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 			cosPhi := math.Cos(phiRad)
 
 			var esq float64
+			var eTheta, ePhi complex128
 
 			// Only compute field in upper hemisphere; below ground is zero
 			if theta <= 90.0 {
@@ -208,8 +215,6 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 				rHat := [3]float64{sinTheta * cosPhi, sinTheta * sinPhi, cosTheta}
 				thetaHat := [3]float64{cosTheta * cosPhi, cosTheta * sinPhi, -sinTheta}
 				phiHat := [3]float64{-sinPhi, cosPhi, 0}
-
-				var eTheta, ePhi complex128
 
 				// Sum contributions from real (physical) segments
 				for n, seg := range realSegs {
@@ -254,6 +259,8 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 
 			eSquared = append(eSquared, esq)
 			thetaRads = append(thetaRads, thetaRad)
+			allETheta = append(allETheta, eTheta)
+			allEPhi = append(allEPhi, ePhi)
 			pattern = append(pattern, PatternPoint{ThetaDeg: theta, PhiDeg: phi, GainDB: 0})
 		}
 	}
@@ -293,5 +300,5 @@ func ComputeFarFieldWithGround(realSegs, imageSegs []Segment, currents []complex
 		}
 	}
 
-	return pattern, gainDBi
+	return pattern, gainDBi, allETheta, allEPhi
 }

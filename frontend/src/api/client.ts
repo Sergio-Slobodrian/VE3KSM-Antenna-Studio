@@ -207,6 +207,29 @@ interface RawWarning {
   segment_index?: number;
 }
 
+interface RawPolPoint {
+  theta: number;
+  phi: number;
+  axial_ratio_db: number;
+  tilt_deg: number;
+  pol_type: string;
+  sense: string;
+}
+
+interface RawPolarization {
+  peak_axial_ratio_db: number;
+  peak_tilt_deg: number;
+  peak_pol_type: string;
+  peak_sense: string;
+  azimuth_deg: number[];
+  azimuth_ar_db: number[];
+  azimuth_tilt_deg: number[];
+  elevation_deg: number[];
+  elevation_ar_db: number[];
+  elevation_tilt_deg: number[];
+  points: RawPolPoint[];
+}
+
 interface RawSimulateResponse {
   impedance: { r: number; x: number };
   swr: number;
@@ -215,6 +238,7 @@ interface RawSimulateResponse {
   gain_dbi: number;
   metrics: RawMetrics;
   polar_cuts: RawCuts;
+  polarization?: RawPolarization;
   pattern: { theta: number; phi: number; gain_db: number }[];
   currents: { segment: number; magnitude: number; phase: number }[];
   warnings?: RawWarning[];
@@ -257,6 +281,26 @@ export async function simulate(request: SimulateRequest): Promise<SimulationResu
       elevationGainDb: raw.polar_cuts?.elevation_gain_db ?? [],
       fixedElevationDeg: raw.polar_cuts?.fixed_elevation_deg ?? 0,
       fixedAzimuthDeg: raw.polar_cuts?.fixed_azimuth_deg ?? 0,
+    },
+    polarization: {
+      peakAxialRatioDb: raw.polarization?.peak_axial_ratio_db ?? 100,
+      peakTiltDeg: raw.polarization?.peak_tilt_deg ?? 0,
+      peakPolType: (raw.polarization?.peak_pol_type ?? 'linear') as 'linear' | 'circular' | 'elliptical',
+      peakSense: (raw.polarization?.peak_sense ?? '') as 'RHCP' | 'LHCP' | '',
+      azimuthDeg: raw.polarization?.azimuth_deg ?? [],
+      azimuthArDb: raw.polarization?.azimuth_ar_db ?? [],
+      azimuthTiltDeg: raw.polarization?.azimuth_tilt_deg ?? [],
+      elevationDeg: raw.polarization?.elevation_deg ?? [],
+      elevationArDb: raw.polarization?.elevation_ar_db ?? [],
+      elevationTiltDeg: raw.polarization?.elevation_tilt_deg ?? [],
+      points: (raw.polarization?.points ?? []).map((p) => ({
+        theta: p.theta,
+        phi: p.phi,
+        axialRatioDb: p.axial_ratio_db,
+        tiltDeg: p.tilt_deg,
+        polType: p.pol_type as 'linear' | 'circular' | 'elliptical',
+        sense: p.sense as 'RHCP' | 'LHCP' | '',
+      })),
     },
     pattern: (raw.pattern || []).map((p) => ({
       theta: p.theta,
@@ -447,7 +491,7 @@ export async function runOptimizer(
     freq_start_mhz: options?.freqStartMhz ?? 0,
     freq_end_mhz: options?.freqEndMhz ?? 0,
     freq_steps: options?.freqSteps ?? 5,
-    particles: options?.particles ?? 20,
+        particles: options?.particles ?? 20,
     iterations: options?.iterations ?? 40,
     seed: options?.seed ?? 0,
   };

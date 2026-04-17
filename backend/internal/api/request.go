@@ -136,6 +136,57 @@ func (s *SweepRequest) ToSimulateRequest() SimulateRequest {
 	}
 }
 
+// NearFieldGridDTO describes the observation plane for a near-field request.
+type NearFieldGridDTO struct {
+	Plane      string  `json:"plane"`       // "xy", "xz", or "yz"
+	FixedCoord float64 `json:"fixed_coord"` // fixed 3rd-axis value (m)
+	Min1       float64 `json:"min1"`        // first in-plane axis min (m)
+	Max1       float64 `json:"max1"`        // first in-plane axis max (m)
+	Min2       float64 `json:"min2"`        // second in-plane axis min (m)
+	Max2       float64 `json:"max2"`        // second in-plane axis max (m)
+	Steps1     int     `json:"steps1"`      // grid points along axis 1
+	Steps2     int     `json:"steps2"`      // grid points along axis 2
+}
+
+// NearFieldAPIRequest bundles the normal simulation input with a near-field
+// observation grid.  The backend runs the MoM solve and then evaluates E/H
+// on the requested plane.
+type NearFieldAPIRequest struct {
+	Sim  SimulateRequest  `json:"sim"`
+	Grid NearFieldGridDTO `json:"grid"`
+}
+
+// OptimVariableDTO describes one tuneable parameter for the optimizer.
+type OptimVariableDTO struct {
+	Name      string  `json:"name" binding:"required"`
+	WireIndex int     `json:"wire_index"`
+	Field     string  `json:"field" binding:"required"` // x1,y1,z1,x2,y2,z2,radius
+	Min       float64 `json:"min"`
+	Max       float64 `json:"max" binding:"gtfield=Min"`
+}
+
+// OptimGoalDTO describes one term of the composite objective function.
+type OptimGoalDTO struct {
+	Metric string  `json:"metric" binding:"required"` // swr, gain, front_to_back, impedance_r, impedance_x, efficiency
+	Target float64 `json:"target"`
+	Weight float64 `json:"weight"`
+}
+
+// OptimizeRequest is the JSON body for POST /api/optimize.
+// It bundles the antenna definition, optimisation variables, goals,
+// and optional sweep band.
+type OptimizeRequest struct {
+	Sim        SimulateRequest    `json:"sim" binding:"required"`
+	Variables  []OptimVariableDTO `json:"variables" binding:"required,min=1"`
+	Goals      []OptimGoalDTO     `json:"goals" binding:"required,min=1"`
+	FreqStartMHz float64          `json:"freq_start_mhz,omitempty"`
+	FreqEndMHz   float64          `json:"freq_end_mhz,omitempty"`
+	FreqSteps    int              `json:"freq_steps,omitempty"`
+	Particles    int              `json:"particles,omitempty"`
+	Iterations   int              `json:"iterations,omitempty"`
+	Seed         int64            `json:"seed,omitempty"`
+}
+
 // validGroundTypes is the set of accepted ground type strings.
 // Empty string is not listed here; Validate() normalizes it to "free_space".
 var validGroundTypes = map[string]bool{

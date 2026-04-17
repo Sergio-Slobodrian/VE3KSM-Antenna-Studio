@@ -25,6 +25,9 @@ import SWRChart from '@/components/results/SWRChart';
 import ImpedanceChart from '@/components/results/ImpedanceChart';
 import CurrentDisplay from '@/components/results/CurrentDisplay';
 import MatchingNetwork from '@/components/results/MatchingNetwork';
+import NearFieldViewer from '@/components/results/NearFieldViewer';
+import CMAViewer from '@/components/results/CMAViewer';
+import OptimizerViewer from '@/components/results/OptimizerViewer';
 import WarningsBanner from '@/components/results/WarningsBanner';
 import SweepExport from '@/components/results/SweepExport';
 
@@ -37,7 +40,10 @@ type Tab =
   | 'swr'
   | 'impedance'
   | 'currents'
-  | 'matching';
+  | 'matching'
+  | 'nearfield'
+  | 'cma'
+  | 'optimizer';
 
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 800;
@@ -93,6 +99,9 @@ const MainLayout: React.FC = () => {
     { id: 'impedance', label: 'Impedance' },
     { id: 'currents', label: 'Currents' },
     { id: 'matching', label: 'Matching' },
+    { id: 'nearfield', label: 'Near-Field' },
+    { id: 'cma', label: 'CMA' },
+    { id: 'optimizer', label: 'Optimizer' },
   ];
 
   const renderTabContent = () => {
@@ -106,6 +115,9 @@ const MainLayout: React.FC = () => {
       case 'impedance': return <ImpedanceChart />;
       case 'currents': return <CurrentDisplay />;
       case 'matching': return <MatchingNetwork />;
+      case 'nearfield': return <NearFieldViewer />;
+      case 'cma': return <CMAViewer />;
+      case 'optimizer': return <OptimizerViewer />;
     }
   };
 

@@ -37,13 +37,49 @@ type SweepOptions struct {
 	Anchors int // when Mode is interpolated; 0 = pick automatically
 }
 
-// chooseAnchors picks a sensible anchor count for a sweep of nSteps
-// points.  Heuristic: ceil(sqrt(nSteps * 2)), capped at nSteps and
-// floored at 8.  For 200 steps -> 20 anchors; for 500 -> ~32.
+// chooseAnchors picks a sensible anchor count for a sweep.
+// The basic heuristic is ceil(sqrt(nSteps * 2)), but when the
+// frequency ratio is large (wide sweep) the impedance of even a
+// simple wire can cycle through many resonances.  Each half-wave
+// resonance needs ≈8 anchors to capture the R+X peak, so we also
+// compute a physics-aware floor from the electrical length of the
+// longest wire at the highest frequency.  The result is the larger
+// of the two estimates, capped at nSteps and floored at 8.
 func chooseAnchors(nSteps int) int {
 	a := int(math.Ceil(math.Sqrt(float64(nSteps) * 2)))
 	if a < 8 {
 		a = 8
+	}
+	if a > nSteps {
+		a = nSteps
+	}
+	return a
+}
+
+// chooseAnchorsPhysics is like chooseAnchors but also considers the
+// antenna's electrical extent to ensure enough anchors per resonance
+// cycle.  freqStartHz..freqEndHz is the sweep range and maxWireLen
+// is the length of the longest wire in metres.
+func chooseAnchorsPhysics(nSteps int, freqStartHz, freqEndHz, maxWireLen float64) int {
+	// Base heuristic
+	a := chooseAnchors(nSteps)
+
+	// Physics-aware: estimate the number of half-wave resonances in
+	// the sweep band.  Each resonance swings R from ~50 Ω to ~kΩ and
+	// back, so we want ≥8 anchors per cycle to keep interpolation
+	// error small.
+	if maxWireLen > 0 && freqStartHz > 0 {
+		c := 2.998e8
+		// Resonances at n·c/(2L).  Count how many fall in [fStart, fEnd].
+		resSpacingHz := c / (2.0 * maxWireLen)
+		nResonances := (freqEndHz - freqStartHz) / resSpacingHz
+		if nResonances < 1 {
+			nResonances = 1
+		}
+		physAnchors := int(math.Ceil(nResonances * 8))
+		if physAnchors > a {
+			a = physAnchors
+		}
 	}
 	if a > nSteps {
 		a = nSteps
@@ -72,7 +108,19 @@ func SweepWithOptions(input SimulationInput, freqStartHz, freqEndHz float64, ste
 	}
 	anchors := opts.Anchors
 	if anchors <= 0 {
-		anchors = chooseAnchors(steps)
+		// Find the longest wire so the anchor heuristic can account
+		// for the number of resonance cycles in the sweep band.
+		var maxLen float64
+		for _, w := range input.Wires {
+			dx := w.X2 - w.X1
+			dy := w.Y2 - w.Y1
+			dz := w.Z2 - w.Z1
+			l := math.Sqrt(dx*dx + dy*dy + dz*dz)
+			if l > maxLen {
+				maxLen = l
+			}
+		}
+		anchors = chooseAnchorsPhysics(steps, freqStartHz, freqEndHz, maxLen)
 	}
 	if anchors > steps {
 		anchors = steps
@@ -157,7 +205,7 @@ func sweepInterpolated(input SimulationInput, freqStartHz, freqEndHz float64, st
 		Code:     "sweep_interpolated",
 		Severity: SeverityInfo,
 		Message: fmt.Sprintf(
-			"sweep interpolated from %d full MoM solves at uniformly-spaced anchors (%.3f MHz step) using natural cubic spline.  Set mode=exact to force a full solve at every point",
+			"sweep interpolated from %d full MoM solves at uniformly-spaced anchors (%.3f MHz step) using PCHIP monotone cubic Hermite.  Set mode=exact to force a full solve at every point",
 			nAnchors, (freqEndHz-freqStartHz)/float64(nAnchors-1)/1e6),
 	})
 

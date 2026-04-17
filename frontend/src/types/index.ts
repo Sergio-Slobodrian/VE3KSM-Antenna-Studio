@@ -105,6 +105,9 @@ export interface GroundConfig {
   permittivity: number;
 }
 
+/** Sweep solver mode: 'auto' picks interpolated when steps > 32. */
+export type SweepMode = 'auto' | 'exact' | 'interpolated';
+
 /** Frequency settings for single-point simulation or multi-point sweep. */
 export interface FrequencyConfig {
   mode: 'single' | 'sweep';
@@ -116,6 +119,8 @@ export interface FrequencyConfig {
   freqEnd: number;
   /** Number of discrete frequency steps in a sweep. */
   freqSteps: number;
+  /** Sweep solver mode: auto (default), exact, or interpolated. */
+  sweepMode: SweepMode;
 }
 
 /** A single point in the 3D far-field radiation pattern (spherical coords, dB gain). */
@@ -204,6 +209,80 @@ export interface SweepResult {
   referenceImpedance: number;
   /** Non-blocking accuracy warnings for the sweep range (validated at start + end frequency). */
   warnings: Warning[];
+}
+
+/** A single observation point in a near-field grid. */
+export interface NearFieldPoint {
+  x: number;
+  y: number;
+  z: number;
+  e_mag: number;
+  h_mag: number;
+  e_mag_db: number;
+  h_mag_db: number;
+}
+
+/** Result of a near-field E/H computation on a 2D observation grid. */
+export interface NearFieldResult {
+  points: NearFieldPoint[];
+  plane: string;
+  axis1_label: string;
+  axis2_label: string;
+  axis1_vals: number[];
+  axis2_vals: number[];
+  steps1: number;
+  steps2: number;
+  e_max_db: number;
+  e_min_db: number;
+  h_max_db: number;
+  h_min_db: number;
+}
+
+/** A single characteristic mode from CMA eigendecomposition. */
+export interface CMAMode {
+  index: number;
+  eigenvalue: number;
+  modal_significance: number;
+  characteristic_angle: number;
+  current_magnitudes: number[];
+}
+
+/** Full CMA result at one frequency. */
+export interface CMAResult {
+  modes: CMAMode[];
+  num_modes: number;
+  freq_mhz: number;
+}
+
+/** One tuneable variable for the PSO optimizer. */
+export interface OptimVariable {
+  name: string;
+  wire_index: number;
+  field: string; // x1,y1,z1,x2,y2,z2,radius
+  min: number;
+  max: number;
+}
+
+/** One term of the composite objective function. */
+export interface OptimGoal {
+  metric: string; // swr, gain, front_to_back, impedance_r, impedance_x, efficiency
+  target: number;
+  weight: number;
+}
+
+/** Result of a PSO optimisation run. */
+export interface OptimResult {
+  best_params: Record<string, number>;
+  best_cost: number;
+  best_metrics: Record<string, number>;
+  convergence: number[];
+  iterations: number;
+  optimized_wires: {
+    X1: number; Y1: number; Z1: number;
+    X2: number; Y2: number; Z2: number;
+    Radius: number; Segments: number;
+    Material: string;
+  }[];
 }
 
 /** Supported display units for the UI; internal storage is always meters. */

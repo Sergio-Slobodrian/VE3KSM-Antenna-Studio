@@ -14,6 +14,11 @@ import type {
   FrequencyConfig,
   SimulationResult,
   SweepResult,
+  NearFieldResult,
+  CMAResult,
+  OptimVariable,
+  OptimGoal,
+  OptimResult,
   Template,
 } from '@/types';
 
@@ -41,6 +46,7 @@ interface SweepRequest {
   freq_end: number;
   freq_steps: number;
   reference_impedance: number;
+  sweep_mode?: string;
 }
 
 // --- Request builders: strip client-only fields (id) and remap key casing ---
@@ -137,6 +143,7 @@ export function buildSweepRequest(
     freq_end: frequency.freqEnd,
     freq_steps: frequency.freqSteps,
     reference_impedance: referenceImpedance,
+    sweep_mode: frequency.sweepMode === 'auto' ? undefined : frequency.sweepMode,
   };
 }
 
@@ -329,6 +336,118 @@ export async function generateTemplate(
   };
 
   return { wires, source, ground };
+}
+
+// ───────── Near-field E/H computation (POST /api/nearfield) ─────────
+
+/** Grid specification for a near-field observation plane. */
+export interface NearFieldGrid {
+  plane: 'xy' | 'xz' | 'yz';
+  fixed_coord: number;
+  min1: number;
+  max1: number;
+  min2: number;
+  max2: number;
+  steps1: number;
+  steps2: number;
+}
+
+/** Request a near-field computation.  Bundles the full simulation input
+ *  with the observation grid; the backend solves and evaluates E/H. */
+export async function computeNearField(
+  wires: Wire[],
+  source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
+  ground: GroundConfig,
+  frequency: FrequencyConfig,
+  referenceImpedance: number,
+  grid: NearFieldGrid,
+): Promise<NearFieldResult> {
+  const body = {
+    sim: {
+      wires: buildWires(wires),
+      source: buildSource(source),
+      loads: buildLoads(loads),
+      transmission_lines: buildTLs(transmissionLines),
+      ground: buildGround(ground),
+      frequency_mhz: frequency.frequencyMhz,
+      reference_impedance: referenceImpedance,
+    },
+    grid,
+  };
+  return fetchJson<NearFieldResult>('/api/nearfield', body);
+}
+
+// ───────── Characteristic Mode Analysis (POST /api/cma) ─────────
+
+/** Run Characteristic Mode Analysis at the current single frequency.
+ *  CMA is source-free, but the backend still requires a valid source field. */
+export async function computeCMA(
+  wires: Wire[],
+  source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
+  ground: GroundConfig,
+  frequency: FrequencyConfig,
+  referenceImpedance: number,
+): Promise<CMAResult> {
+  const body = {
+    wires: buildWires(wires),
+    source: buildSource(source),
+    loads: buildLoads(loads),
+    transmission_lines: buildTLs(transmissionLines),
+    ground: buildGround(ground),
+    frequency_mhz: frequency.frequencyMhz,
+    reference_impedance: referenceImpedance,
+  };
+  return fetchJson<CMAResult>('/api/cma', body);
+}
+
+// ───────── Optimizer (POST /api/optimize) ─────────
+
+/** Run PSO optimisation on the current antenna geometry.
+ *  Variables define which wire properties to tune and their bounds.
+ *  Goals define the objective function as a weighted deviation from targets. */
+export async function runOptimizer(
+  wires: Wire[],
+  source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
+  ground: GroundConfig,
+  frequency: FrequencyConfig,
+  referenceImpedance: number,
+  variables: OptimVariable[],
+  goals: OptimGoal[],
+  options?: {
+    freqStartMhz?: number;
+    freqEndMhz?: number;
+    freqSteps?: number;
+    particles?: number;
+    iterations?: number;
+    seed?: number;
+  },
+): Promise<OptimResult> {
+  const body = {
+    sim: {
+      wires: buildWires(wires),
+      source: buildSource(source),
+      loads: buildLoads(loads),
+      transmission_lines: buildTLs(transmissionLines),
+      ground: buildGround(ground),
+      frequency_mhz: frequency.frequencyMhz,
+      reference_impedance: referenceImpedance,
+    },
+    variables,
+    goals,
+    freq_start_mhz: options?.freqStartMhz ?? 0,
+    freq_end_mhz: options?.freqEndMhz ?? 0,
+    freq_steps: options?.freqSteps ?? 5,
+    particles: options?.particles ?? 20,
+    iterations: options?.iterations ?? 40,
+    seed: options?.seed ?? 0,
+  };
+  return fetchJson<OptimResult>('/api/optimize', body);
 }
 
 // ───────── Matching network designer (POST /api/match) ─────────

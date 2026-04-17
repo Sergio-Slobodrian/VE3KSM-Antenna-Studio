@@ -58,10 +58,9 @@ const PolarCut: React.FC = () => {
       // Azimuth cut: 0° at top (east in plot), increasing clockwise.
       angleRad = ((deg - 90) * Math.PI) / 180;
     } else {
-      // Elevation cut: span -90..+90, render on top half-circle.
-      // Map -90..+90 → 180..0 degrees so +90 (zenith) is at top.
-      const phi = 90 - deg;
-      angleRad = (phi * Math.PI) / 180;
+      // Elevation cut: 0° (horizon) points right, +90° (zenith) at top.
+      // Negate so positive elevation arcs upward in SVG (y-down).
+      angleRad = (-deg * Math.PI) / 180;
     }
     const x = CENTER + r * Math.cos(angleRad);
     const y = CENTER + r * Math.sin(angleRad);
@@ -110,7 +109,7 @@ const PolarCut: React.FC = () => {
         {(isFullCircle ? [0, 45, 90, 135, 180, 225, 270, 315] : [-90, -45, 0, 45, 90]).map((deg) => {
           const angleRad = isFullCircle
             ? ((deg - 90) * Math.PI) / 180
-            : (((90 - deg) * Math.PI) / 180);
+            : ((-deg * Math.PI) / 180);
           const x = CENTER + RADIUS * Math.cos(angleRad);
           const y = CENTER + RADIUS * Math.sin(angleRad);
           return (

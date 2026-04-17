@@ -64,25 +64,65 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	// segments). Each interior node gets a triangle basis function that spans the
 	// two segments sharing that node. Wire endpoints have no basis function,
 	// which enforces the boundary condition I=0 at open wire ends.
+	//
+	// EXCEPTION: when a ground plane is present (perfect or real), wire endpoints
+	// at z=0 get a half-triangle "junction basis" that allows non-zero current
+	// at the ground connection. Without this, a base-fed monopole would have I=0
+	// at its feed point, giving wildly wrong impedance.
 	var bases []TriangleBasis
 	wireBasisOffsets := make([]int, len(input.Wires))
+	wireStartJunction := make([]bool, len(input.Wires)) // true if junction basis at wire start
+	wireEndJunction := make([]bool, len(input.Wires))   // true if junction basis at wire end
+
+	hasGround := input.Ground.Type == "perfect" || input.Ground.Type == "real"
 
 	for wi := range input.Wires {
 		wireBasisOffsets[wi] = len(bases)
 		off := wireSegOffsets[wi]
 		nSeg := wireSegCounts[wi]
+		w := input.Wires[wi]
 
+		// Check if wire endpoints sit on the ground plane (z=0).
+		// If so, add a half-triangle junction basis to allow current flow
+		// between the wire and the ground.
+		if hasGround && w.Z1 == 0 {
+			wireStartJunction[wi] = true
+			segRight := &allSegments[off]
+			bases = append(bases, TriangleBasis{
+				NodeIndex:       len(bases),
+				NodePos:         segRight.Start, // wire start at z=0
+				SegLeft:         nil,             // no segment below ground
+				SegRight:        segRight,
+				ChargeDensLeft:  0,
+				ChargeDensRight: 1.0 / (2.0 * segRight.HalfLength),
+			})
+		}
+
+		// Normal interior basis functions.
 		for ni := 1; ni < nSeg; ni++ {
 			segLeft := &allSegments[off+ni-1]
 			segRight := &allSegments[off+ni]
-			// Charge density = ±1/Δl where Δl = 2*HalfLength is the full segment length
 			bases = append(bases, TriangleBasis{
 				NodeIndex:       len(bases),
-				NodePos:         segLeft.End, // the junction point between left and right segments
+				NodePos:         segLeft.End,
 				SegLeft:         segLeft,
 				SegRight:        segRight,
-				ChargeDensLeft:  -1.0 / (2.0 * segLeft.HalfLength),  // = -1/Δl_left
-				ChargeDensRight: 1.0 / (2.0 * segRight.HalfLength),  // = +1/Δl_right
+				ChargeDensLeft:  -1.0 / (2.0 * segLeft.HalfLength),
+				ChargeDensRight: 1.0 / (2.0 * segRight.HalfLength),
+			})
+		}
+
+		// Junction basis at wire end if it touches the ground.
+		if hasGround && w.Z2 == 0 {
+			wireEndJunction[wi] = true
+			segLeft := &allSegments[off+nSeg-1]
+			bases = append(bases, TriangleBasis{
+				NodeIndex:       len(bases),
+				NodePos:         segLeft.End, // wire end at z=0
+				SegLeft:         segLeft,
+				SegRight:        nil, // no segment below ground
+				ChargeDensLeft:  -1.0 / (2.0 * segLeft.HalfLength),
+				ChargeDensRight: 0,
 			})
 		}
 	}
@@ -93,7 +133,7 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	}
 
 	// ---- Step 3: Determine which basis function receives the voltage source ----
-	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets)
+	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets, wireStartJunction, wireEndJunction)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +163,10 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		addGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega)
 	case "real":
 		imageSegs := ApplyPerfectGround(allSegments)
-		addRealGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega,
+		// Use the complex-image method for Z-matrix assembly — it
+		// is significantly more accurate than simple Fresnel reflection
+		// for wires near the ground plane (Bannister 1986).
+		addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
 			input.Ground.Conductivity, input.Ground.Permittivity)
 	}
 
@@ -163,10 +206,12 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	V[feedBasis] = voltage
 
 	// ---- Step 7: Solve the linear system Z·I = V ----
-	// The solution vector I contains the complex current coefficients for each
-	// triangle basis function. The system is solved via LU decomposition of the
-	// equivalent 2N x 2N real system (see solveComplexLU).
-	I, err := solveComplexLU(Z, V, nBasis)
+	// For small matrices (N ≤ GMRESThreshold) direct LU decomposition is
+	// used for guaranteed accuracy.  For larger systems GMRES with a
+	// diagonal (Jacobi) preconditioner is much faster — O(N²) per
+	// iteration vs O(N³) for LU — and converges reliably on well-
+	// conditioned MoM impedance matrices.
+	I, err := solveSystem(Z, V, nBasis)
 	if err != nil {
 		return nil, fmt.Errorf("solver failed: %w", err)
 	}
@@ -230,18 +275,6 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	metrics, cuts := ComputeFarFieldMetricsWithLoss(pattern, inputPower, lossPower)
 
 	warnings := ValidateGeometry(input.Wires, freq)
-	if input.Ground.Type == "real" {
-		for wi, w := range input.Wires {
-			if w.Z1 == 0 || w.Z2 == 0 {
-				warnings = append(warnings, Warning{
-					Code:      "wire_endpoint_on_ground",
-					Severity:  SeverityWarn,
-					Message:   "wire endpoint sits exactly at z=0; with real ground the Fresnel kernel can become near-singular and produce non-physical impedance.  Lift the endpoint by a few cm or use perfect ground for base-fed verticals",
-					WireIndex: wi,
-				})
-			}
-		}
-	}
 	if impedance.R < 0 {
 		// Self-diagnose: re-run with segment counts shifted by +-2 on every
 		// wire.  If the perturbed runs give positive R, the failure is most
@@ -321,6 +354,165 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	}, nil
 }
 
+// SimulateNearField runs the standard MoM simulation and then evaluates the
+// near-field E and H on the requested observation grid.  It internally
+// re-solves the system (the solve is fast — dominated by matrix assembly)
+// to obtain the complex segment currents needed by the Hertzian-dipole
+// near-field routine.
+func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFieldResult, error) {
+	if len(input.Wires) == 0 {
+		return nil, fmt.Errorf("no wires provided")
+	}
+	if input.Frequency <= 0 {
+		return nil, fmt.Errorf("frequency must be positive")
+	}
+
+	// --- Replicate Steps 1-8 from Simulate to get segment currents ---
+	var allSegments []Segment
+	wireSegOffsets := make([]int, len(input.Wires))
+	wireSegCounts := make([]int, len(input.Wires))
+	for wi, w := range input.Wires {
+		wireSegOffsets[wi] = len(allSegments)
+		numSeg := w.Segments
+		if numSeg < 3 {
+			numSeg = 3
+		}
+		if numSeg%2 == 0 {
+			numSeg++
+		}
+		wireSegCounts[wi] = numSeg
+		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
+		for j := range segs {
+			segs[j].Index = len(allSegments) + j
+		}
+		allSegments = append(allSegments, segs...)
+	}
+	if len(allSegments) == 0 {
+		return nil, fmt.Errorf("no segments generated")
+	}
+
+	// Build triangle basis (same logic as Simulate)
+	var bases []TriangleBasis
+	wireBasisOffsets := make([]int, len(input.Wires))
+	wireStartJunction := make([]bool, len(input.Wires))
+	wireEndJunction := make([]bool, len(input.Wires))
+	hasGround := input.Ground.Type == "perfect" || input.Ground.Type == "real"
+
+	for wi := range input.Wires {
+		wireBasisOffsets[wi] = len(bases)
+		off := wireSegOffsets[wi]
+		nSeg := wireSegCounts[wi]
+		w := input.Wires[wi]
+
+		if hasGround && w.Z1 == 0 {
+			wireStartJunction[wi] = true
+			segRight := &allSegments[off]
+			bases = append(bases, TriangleBasis{
+				NodeIndex: len(bases), NodePos: segRight.Start,
+				SegLeft: nil, SegRight: segRight,
+				ChargeDensLeft: 0, ChargeDensRight: 1.0 / (2.0 * segRight.HalfLength),
+			})
+		}
+		for s := 0; s < nSeg-1; s++ {
+			segLeft := &allSegments[off+s]
+			segRight := &allSegments[off+s+1]
+			bases = append(bases, TriangleBasis{
+				NodeIndex: len(bases), NodePos: segLeft.End,
+				SegLeft: segLeft, SegRight: segRight,
+				ChargeDensLeft: -1.0 / (2.0 * segLeft.HalfLength),
+				ChargeDensRight: 1.0 / (2.0 * segRight.HalfLength),
+			})
+		}
+		if hasGround && w.Z2 == 0 {
+			wireEndJunction[wi] = true
+			segLeft := &allSegments[off+nSeg-1]
+			bases = append(bases, TriangleBasis{
+				NodeIndex: len(bases), NodePos: segLeft.End,
+				SegLeft: segLeft, SegRight: nil,
+				ChargeDensLeft: -1.0 / (2.0 * segLeft.HalfLength),
+				ChargeDensRight: 0,
+			})
+		}
+	}
+	nBasis := len(bases)
+	if nBasis == 0 {
+		return nil, fmt.Errorf("no basis functions")
+	}
+
+	freq := input.Frequency
+	omega := 2.0 * math.Pi * freq
+	k := omega / 299792458.0
+
+	Z := buildTriangleZMatrix(bases, allSegments, k, omega)
+
+	// Ground contributions
+	switch input.Ground.Type {
+	case "perfect":
+		imageSegs := ApplyPerfectGround(allSegments)
+		addGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega)
+	case "real":
+		imageSegs := ApplyPerfectGround(allSegments)
+		addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
+			input.Ground.Conductivity, input.Ground.Permittivity)
+	}
+
+	// Lumped loads
+	lossPerBasis := make([]float64, nBasis)
+	if len(input.Loads) > 0 {
+		if err := applyLoads(Z, input.Loads, omega, input.Wires,
+			wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis); err != nil {
+			return nil, fmt.Errorf("applying loads: %w", err)
+		}
+	}
+
+	// Material loss
+	if err := applyMaterialLoss(cdenseAdder{Z: Z}, input.Wires, allSegments,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, freq, lossPerBasis); err != nil {
+		return nil, fmt.Errorf("applying material loss: %w", err)
+	}
+
+	// Transmission lines
+	if len(input.TransmissionLines) > 0 {
+		if err := applyTransmissionLines(Z, input.TransmissionLines, omega,
+			input.Wires, wireSegCounts, wireBasisOffsets, lossPerBasis); err != nil {
+			return nil, fmt.Errorf("applying transmission lines: %w", err)
+		}
+	}
+
+	// Feed basis + excitation
+	voltage := input.Source.Voltage
+	if voltage == 0 {
+		voltage = 1 + 0i
+	}
+	feedBasis, err := resolveFeedBasis(input.Source, input.Wires,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets,
+		wireStartJunction, wireEndJunction)
+	if err != nil {
+		return nil, err
+	}
+	V := make([]complex128, nBasis)
+	V[feedBasis] = voltage
+
+	// Solve
+	I, err := solveSystem(Z, V, nBasis)
+	if err != nil {
+		return nil, err
+	}
+
+	// Interpolate to segment currents
+	segCurrents := interpolateSegmentCurrents(I, bases, allSegments, wireSegOffsets, wireSegCounts)
+
+	// Compute near-field
+	switch input.Ground.Type {
+	case "perfect":
+		return ComputeNearFieldWithGround(allSegments, segCurrents, k, freq, nfReq), nil
+	default:
+		// Free-space and real ground (real ground near-field is approximate
+		// using free-space Green's function for now — same as NEC-2 NF card)
+		return ComputeNearField(allSegments, segCurrents, k, freq, nfReq), nil
+	}
+}
+
 // buildTriangleZMatrix assembles the nBasis x nBasis impedance matrix using
 // the MPIE formulation with triangle (rooftop) basis functions.
 //
@@ -382,51 +574,22 @@ func buildTriangleZMatrix(bases []TriangleBasis, segments []Segment, k, omega fl
 }
 
 // addGroundTriangleBasis adds perfect ground plane (PEC at z=0) image
-// contributions to the impedance matrix Z using image theory.
+// contributions to the impedance matrix Z.
 //
-// For each real basis function, a corresponding image basis is constructed by
-// mirroring the segments across z=0 (with direction sign changes per PEC image
-// rules — see ApplyPerfectGround). The mutual coupling between each real basis
-// (observation) and each image basis (source) is computed and added to the
-// existing Z matrix entries. This effectively doubles the number of source
-// integrals without increasing the matrix size.
-//
-// The charge density coefficients are preserved from the real basis because the
-// image charge mirrors with the same sign for a PEC ground plane.
+// This uses the half-space Green's function approach: instead of building
+// separate image basis functions, the image contribution is folded directly
+// into the quadrature over real basis functions via TriangleKernelPerfectGround.
+// This correctly handles the near-field image coupling for ground-connected
+// wires where the old image-basis approach broke the triangle parameterisation.
 func addGroundTriangleBasis(Z *mat.CDense, bases []TriangleBasis, realSegs, imageSegs []Segment, k, omega float64) {
-	// Construct image basis functions by mirroring each real basis across z=0
-	imageBases := make([]TriangleBasis, len(bases))
-	for i, b := range bases {
-		var imgLeft, imgRight *Segment
-		if b.SegLeft != nil {
-			s := imageSegs[b.SegLeft.Index]
-			imgLeft = &s
-		}
-		if b.SegRight != nil {
-			s := imageSegs[b.SegRight.Index]
-			imgRight = &s
-		}
-		imageBases[i] = TriangleBasis{
-			NodeIndex:       i,
-			NodePos:         [3]float64{b.NodePos[0], b.NodePos[1], -b.NodePos[2]}, // mirror z
-			SegLeft:         imgLeft,
-			SegRight:        imgRight,
-			ChargeDensLeft:  b.ChargeDensLeft,
-			ChargeDensRight: b.ChargeDensRight,
-		}
-	}
-
-	// Same MPIE prefactors as in buildTriangleZMatrix
 	vecPrefactor := complex(0, omega*Mu0/(4.0*math.Pi))
 	k2 := k * k
 	scaPrefactor := -complex(0, omega*Mu0/(4.0*math.Pi*k2))
 
-	// Add image coupling to each Z matrix entry: Z[i][j] += coupling(real_i, image_j)
 	n := len(bases)
 	for i := 0; i < n; i++ {
 		for j := 0; j < n; j++ {
-			// segments arg is nil because image segments are already embedded in imageBases
-			vecTerm, scaTerm := TriangleKernel(bases[i], imageBases[j], k, omega, nil)
+			vecTerm, scaTerm := TriangleKernelPerfectGround(bases[i], bases[j], k)
 			val := vecPrefactor*vecTerm + scaPrefactor*scaTerm
 			old := Z.At(i, j)
 			Z.Set(i, j, old+val)
@@ -471,42 +634,76 @@ func interpolateSegmentCurrents(basisCurrents []complex128, bases []TriangleBasi
 // resolveFeedBasis converts user-specified wire/segment source indices into the
 // corresponding triangle basis function index in the global basis array.
 //
-// The mapping works as follows for a wire with N segments:
-//   - Segments are numbered 0..N-1
-//   - Interior nodes (basis functions) are numbered 1..N-1, where node i sits
-//     between segment i-1 and segment i
-//   - The basis function closest to segment segIdx is at node segIdx+1,
-//     clamped to [1, N-1] to stay within interior nodes
-//   - The global basis index is wireBasisOffsets[wire] + (nodeIdx - 1)
+// Without ground junction bases, the mapping is:
+//   - Segments numbered 0..N-1
+//   - Interior nodes 1..N-1, where node i sits between segment i-1 and i
+//   - Basis index = wireBasisOffsets[wire] + (nodeIdx - 1)
 //
-// This ensures the delta-gap voltage source is applied at the basis function
-// nearest to the user-requested segment, which is the standard MoM approach
-// for modeling a feed point.
-func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []int, wireBasisOffsets []int) (int, error) {
+// With a ground junction basis at the wire start (z=0), an extra half-triangle
+// basis is prepended at node 0 (the wire tip). This shifts all interior bases
+// by +1 within the wire's basis array. When the feed is at SegmentIndex=0,
+// the junction basis (at the wire base) is selected, which is the physically
+// correct feed point for a base-fed monopole.
+func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []int, wireBasisOffsets []int, wireStartJunction, wireEndJunction []bool) (int, error) {
 	if src.WireIndex < 0 || src.WireIndex >= len(wires) {
 		return 0, fmt.Errorf("source wire_index %d out of range", src.WireIndex)
 	}
-	nSeg := wireSegCounts[src.WireIndex]
+	wi := src.WireIndex
+	nSeg := wireSegCounts[wi]
 	segIdx := src.SegmentIndex
 	if segIdx < 0 || segIdx >= nSeg {
 		return 0, fmt.Errorf("source segment_index %d out of range [0, %d)", segIdx, nSeg)
 	}
 
-	// Map segment index to the nearest interior node index (1-based).
-	// Segment segIdx is bounded by node segIdx (its start) and node segIdx+1 (its end).
-	// We pick the higher node to place the source at the segment's end junction.
-	nodeIdx := segIdx + 1
-	if nodeIdx < 1 {
-		nodeIdx = 1 // clamp: first interior node
-	}
-	if nodeIdx > nSeg-1 {
-		nodeIdx = nSeg - 1 // clamp: last interior node
+	startJ := wireStartJunction[wi]
+	endJ := wireEndJunction[wi]
+
+	// With a start junction, basis layout for a wire is:
+	//   [0] = junction at wire start (node 0)
+	//   [1] = interior node 1 (between seg 0 and seg 1)
+	//   ...
+	//   [N-1] = interior node N-1 (between seg N-2 and seg N-1)
+	//   [N]   = junction at wire end (if endJ)
+	//
+	// Without a start junction:
+	//   [0] = interior node 1
+	//   ...
+	//   [N-2] = interior node N-1
+	//   [N-1] = junction at wire end (if endJ)
+
+	// Special case: feed at wire start with ground junction
+	if startJ && segIdx == 0 {
+		return wireBasisOffsets[wi], nil // junction basis at index 0
 	}
 
-	// Convert 1-based node index to 0-based basis index within this wire,
-	// then offset to the global basis array.
-	basisIdx := wireBasisOffsets[src.WireIndex] + (nodeIdx - 1)
-	return basisIdx, nil
+	// Special case: feed at wire end with ground junction
+	if endJ && segIdx == nSeg-1 {
+		// End junction is the last basis for this wire.
+		nBases := (nSeg - 1) // interior bases
+		if startJ {
+			nBases++
+		}
+		// End junction is at index nBases (after all interior bases + optional start junction)
+		return wireBasisOffsets[wi] + nBases, nil
+	}
+
+	// Normal interior node mapping.
+	nodeIdx := segIdx + 1
+	if nodeIdx < 1 {
+		nodeIdx = 1
+	}
+	if nodeIdx > nSeg-1 {
+		nodeIdx = nSeg - 1
+	}
+
+	// Convert to wire-local basis index, accounting for the optional
+	// start junction that shifts interior bases by +1.
+	localIdx := nodeIdx - 1 // 0-based interior index
+	if startJ {
+		localIdx++ // shift: junction at index 0 pushes interior bases up
+	}
+
+	return wireBasisOffsets[wi] + localIdx, nil
 }
 
 // Sweep runs the MoM solver at multiple frequency points across a range,
@@ -627,6 +824,30 @@ func sweepExact(input SimulationInput, freqStartHz, freqEndHz float64, steps int
 	}
 
 	return result, nil
+}
+
+// GMRESThreshold is the basis-function count above which solveSystem
+// uses GMRES instead of direct LU.  Below this threshold the O(N³)
+// LU is fast enough and always exact; above it, iterative GMRES
+// avoids the cubic memory/time wall.  150 is a conservative cross-
+// over: a 150-basis LU takes ~(2×150)³ ≈ 27 M ops; GMRES at 150
+// unknowns converges in ~30–50 iterations at ~150² ≈ 22 K ops/iter.
+const GMRESThreshold = 150
+
+// solveSystem dispatches to LU or GMRES based on problem size.
+// Both paths return the same complex current vector; GMRES falls
+// back to LU if it fails to converge.
+func solveSystem(Z *mat.CDense, V []complex128, n int) ([]complex128, error) {
+	if n <= GMRESThreshold {
+		return solveComplexLU(Z, V, n)
+	}
+	I, info, err := SolveGMRES(Z, V, n, GMRESOptions{})
+	if err != nil {
+		// Fallback: GMRES didn't converge — use direct LU.
+		_ = info
+		return solveComplexLU(Z, V, n)
+	}
+	return I, nil
 }
 
 // solveComplexLU solves the complex linear system Z·I = V by converting it to an

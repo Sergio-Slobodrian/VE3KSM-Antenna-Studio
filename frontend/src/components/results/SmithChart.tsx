@@ -6,45 +6,18 @@
  * sweep mode the locus across frequency is traced and the markers at
  * the start/end of the sweep are highlighted.
  *
- * The chart auto-zooms by default so a small-magnitude locus fills a
- * useful portion of the viewport.  An explicit zoom slider overrides
- * the auto choice.  At zoom = 1 the entire unit circle is visible; at
+ * The chart defaults to zoom = 1 showing the full unit circle.  The
+ * user can zoom in with the slider and drag to pan.  At zoom = 1 the
+ * entire unit circle is visible; at
  * zoom = N only the |Γ| ≤ 1/N inner region is shown, with everything
  * else clipped against the SVG boundary.
  */
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 
 const SIZE = 480;            // intrinsic SVG drawing size
 const CENTER = SIZE / 2;
 const BASE_RADIUS = SIZE / 2 - 24;
-
-/** Compute zoom + pan that centers on and fills the data's bounding box.
- *  Returns { zoom, panX, panY } so the auto view is actually useful for
- *  datasets that cluster far from the origin (e.g. |Γ| ≈ 1). */
-function autoFit(points: { re: number; im: number }[]): { zoom: number; panX: number; panY: number } {
-  if (points.length === 0) return { zoom: 1, panX: 0, panY: 0 };
-  // Filter to |Γ| <= 1 (physical points only).
-  const valid = points.filter((p) => Math.sqrt(p.re * p.re + p.im * p.im) <= 1.0);
-  if (valid.length === 0) return { zoom: 1, panX: 0, panY: 0 };
-  let reMin = Infinity, reMax = -Infinity, imMin = Infinity, imMax = -Infinity;
-  for (const p of valid) {
-    if (p.re < reMin) reMin = p.re;
-    if (p.re > reMax) reMax = p.re;
-    if (p.im < imMin) imMin = p.im;
-    if (p.im > imMax) imMax = p.im;
-  }
-  const spread = Math.max(reMax - reMin, imMax - imMin, 0.01);
-  // Zoom so the spread fills 70% of the chart diameter.
-  const z = Math.min(20, Math.max(1, 1.4 / spread));
-  // Pan to center the data bbox in the viewport.
-  const cRe = (reMin + reMax) / 2;
-  const cIm = (imMin + imMax) / 2;
-  // In SVG space: center of data at (CENTER + cRe*r, CENTER - cIm*r).
-  // We want that at (CENTER, CENTER), so panX = -cRe*r, panY = cIm*r.
-  const r = BASE_RADIUS * z;
-  return { zoom: z, panX: -cRe * r, panY: cIm * r };
-}
 
 /** Convert a Γ = (re, im) to SVG (x, y) at the current zoom. */
 function makeToXY(zoom: number) {
@@ -62,15 +35,8 @@ const SmithChart: React.FC = () => {
   const single = simulationResult?.reflection;
   const sweep = sweepResult?.reflections ?? [];
 
-  // Pick the zoom level: explicit override wins; otherwise auto-fit.
-  const allPoints: { re: number; im: number }[] = useMemo(() => {
-    const pts = [...sweep];
-    if (single) pts.push(single);
-    return pts;
-  }, [sweep, single]);
-
-  const autoResult = useMemo(() => autoFit(allPoints), [allPoints]);
-  const zoom = zoomOverride ?? autoResult.zoom;
+  // Default to zoom=1 (full unit circle visible); user can zoom in manually.
+  const zoom = zoomOverride ?? 1;
 
   // Note: pan is intentionally NOT reset when zoom changes.  Use the
   // Recenter button if the chart drifts off after zooming.
@@ -175,15 +141,15 @@ const SmithChart: React.FC = () => {
         </label>
         <button
           className="btn btn-outline btn-small"
-          onClick={() => { setZoomOverride(null); setPan({ x: autoResult.panX, y: autoResult.panY }); }}
-          title="Reset to auto-zoom + pan (fits the data)"
+          onClick={() => { setZoomOverride(null); setPan({ x: 0, y: 0 }); }}
+          title="Reset to full chart view (zoom 1×, no pan)"
         >
           Auto
         </button>
         <button
           className="btn btn-outline btn-small"
-          onClick={() => setPan({ x: autoResult.panX, y: autoResult.panY })}
-          title="Recenter the chart"
+          onClick={() => setPan({ x: 0, y: 0 })}
+          title="Recenter the chart on the origin"
         >
           Recenter
         </button>

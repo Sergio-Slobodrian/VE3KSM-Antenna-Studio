@@ -12,7 +12,7 @@ touch, and the user-visible payoff.  Status is updated as work lands.
 
 ## Week 1 — Quick wins (low effort, high payoff)
 
-### 1. Lumped loads on segments — *Status: planned*
+### 1. Lumped loads on segments — *Status: shipped*
 
 R / L / C in series and parallel topologies, applied to any segment of
 any wire.  The single biggest functional gap versus EZNEC/4nec2;
@@ -26,7 +26,7 @@ folded-dipole stubs, lumped 4:1 baluns.
 - **Frontend:** new `LoadConfig` panel; rendering in current/
   geometry views.
 
-### 2. Smith chart data + arbitrary-Z₀ VSWR — *Status: planned*
+### 2. Smith chart data + arbitrary-Z₀ VSWR — *Status: shipped*
 
 Hardcoded 50 Ω today.  Make the reference impedance a per-request
 parameter and return the complex reflection coefficient `S11` so the
@@ -38,7 +38,7 @@ frontend can plot a Smith chart and report VSWR at user Z₀.
 - **Frontend:** Smith chart canvas component (SVG with constant-R and
   constant-X arcs); add to results pane.
 
-### 3. Far-field metrics + 2D polar cuts — *Status: planned*
+### 3. Far-field metrics + 2D polar cuts — *Status: shipped*
 
 The 3D pattern is computed but only directivity is surfaced.  Add
 front-to-back ratio, 3 dB beamwidth (E and H planes), main-lobe
@@ -52,7 +52,7 @@ azimuth) — what users want for day-to-day work.
 - **Frontend:** numeric metrics in results header; new polar plot
   component (SVG or Recharts radial bar variant).
 
-### 4. Conductor materials + skin-effect loss — *Status: planned*
+### 4. Conductor materials + skin-effect loss — *Status: shipped*
 
 Wires currently carry only a radius (loss-free).  Add a material
 library (Cu, Al, brass, steel, stainless) and apply the surface
@@ -65,7 +65,7 @@ measured Q on loaded / electrically-small antennas.
   changes in `mom/zmatrix.go`.
 - **Frontend:** material dropdown in wire editor; default = Cu.
 
-### 5. Segmentation validator — *Status: planned*
+### 5. Segmentation validator — *Status: shipped*
 
 Pre-flight checks that warn (don't block) when a wire violates known
 thin-wire-MoM accuracy rules:
@@ -118,22 +118,28 @@ time 10–50×.
 
 ## Week 3–4 — Numerics and ground
 
-### 9. GMRES + simple preconditioning
+### 9. GMRES + simple preconditioning — *Status: shipped*
 
-Dense LU via gonum tops out around a few hundred segments.  Iterative
-GMRES with a diagonal or near-field block preconditioner unlocks
-arrays, large Yagis, collinear stacks, and big quads.
+Restarted GMRES(50) with diagonal (Jacobi) preconditioning, working
+directly on the complex Z-matrix (no 2N real doubling).  Auto-dispatch:
+N ≤ 150 bases → LU, N > 150 → GMRES with LU fallback on non-convergence.
+Unlocks arrays, large Yagis, collinear stacks, and big quads without
+the O(N³) memory/time wall.
 
-- **Effort:** Medium
+- **Effort:** Medium (shipped)
 
-### 10. Complex-image ground model
+### 10. Complex-image ground model — *Status: shipped*
 
-Bannister/Lindell two-fictitious-image approximation — far more
-accurate than pure Fresnel for close-to-ground wires, and only
-marginally more code than the current `mom/ground_real.go`.  Also
-expose explicit radial-ground geometry (N radials, length, depth).
+Bannister (1986) complex-image method replaces the simple Fresnel
+reflection-coefficient image with an image at complex depth
+`z_img = -(z_src + 2/γ_g)` where `γ_g = jk₀√εc`.  The complex
+distance naturally captures the Sommerfeld lateral-wave and surface-
+wave contributions that the Fresnel approximation misses for near-
+field interactions (wires close to ground).  Far-field still uses
+standard Fresnel coefficients (accurate at large distance).
+Radial ground geometry deferred to a future polish item.
 
-- **Effort:** Medium
+- **Effort:** Medium (shipped)
 
 ---
 
@@ -155,7 +161,7 @@ the same accuracy.  Pairs naturally with the iterative solver.
 
 - **Effort:** High
 
-### 13. Optimization loop (PSO / differential evolution)
+### 13. Optimization loop (PSO / differential evolution) — *Status: shipped*
 
 Wrap `Simulate()` in an objective function ("max gain + min SWR over
 14.0–14.35 MHz"); expose tunable parameters on templates (Yagi
@@ -164,7 +170,7 @@ the hobbyist audience.
 
 - **Effort:** Medium–High
 
-### 14. Characteristic Mode Analysis (CMA)
+### 14. Characteristic Mode Analysis (CMA) — *Status: shipped*
 
 Generalized eigendecomposition of the existing Z-matrix to show which
 modes resonate and how well each is excited.  Research frontier for
@@ -172,12 +178,15 @@ electrically-small antenna design.
 
 - **Effort:** Medium
 
-### 15. Near-field (E/H) at arbitrary points
+### 15. Near-field (E/H) at arbitrary points — *Status: shipped*
 
-Reuses the Green's function path that far-field already uses.  Useful
-for EMC / RF-exposure checks and for coupling studies.
+Hertzian-dipole superposition evaluates exact near-field E and H on a
+user-specified 2D observation plane (XZ, XY, or YZ).  Backend exposes
+`POST /api/nearfield`; frontend has a heat-map viewer with jet colour
+scale, wire overlay, selectable |E|/|H| display, and adjustable dynamic
+range.  Supports free-space and PEC ground (image contributions).
 
-- **Effort:** Medium
+- **Effort:** Medium (shipped)
 
 ---
 

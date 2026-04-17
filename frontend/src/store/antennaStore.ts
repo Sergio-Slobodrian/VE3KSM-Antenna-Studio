@@ -42,6 +42,9 @@ interface AntennaState {
   simulationResultSeq: number;
   sweepResultSeq: number;
 
+  /** Persisted 3D-pattern camera state so zoom/pan survive tab switches. */
+  patternCamera: { position: [number, number, number]; target: [number, number, number] } | null;
+
   setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
@@ -62,6 +65,7 @@ interface AntennaState {
   setSweepResult: (result: SweepResult | null) => void;
   setSimulating: (value: boolean) => void;
   setError: (error: string | null) => void;
+  setPatternCamera: (cam: { position: [number, number, number]; target: [number, number, number] }) => void;
 }
 
 const defaultWireId = uuidv4();
@@ -105,6 +109,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     freqStart: 13.0,
     freqEnd: 15.0,
     freqSteps: 50,
+    sweepMode: 'auto',
   },
   referenceImpedance: 50,
   simulationResult: null,
@@ -115,6 +120,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   error: null,
   simulationResultSeq: 0,
   sweepResultSeq: 0,
+  patternCamera: null,
 
   // --- Actions ---
 
@@ -213,7 +219,8 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   setSimulationResult: (result) =>
     set((state) => {
       const seq = Math.max(state.simulationResultSeq, state.sweepResultSeq) + 1;
-      return { simulationResult: result, simulationResultSeq: seq };
+      // Clear persisted camera so the viewer auto-fits to the new pattern.
+      return { simulationResult: result, simulationResultSeq: seq, patternCamera: null };
     }),
   setSweepResult: (result) =>
     set((state) => {
@@ -222,4 +229,5 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     }),
   setSimulating: (value) => set({ isSimulating: value }),
   setError: (error) => set({ error }),
+  setPatternCamera: (cam) => set({ patternCamera: cam }),
 }));

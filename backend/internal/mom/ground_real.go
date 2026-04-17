@@ -82,37 +82,15 @@ func FresnelRH(psi float64, epsilonC complex128) complex128 {
 }
 
 // addRealGroundTriangleBasis adds lossy ground contributions to the Z-matrix
-// using the reflection-coefficient image method.
+// using the half-space Green's function with Fresnel reflection coefficients.
 //
-// This is analogous to addGroundTriangleBasis (perfect ground) but scales each
-// image contribution by a Fresnel reflection coefficient computed from the
-// geometry of the real-image segment pair. The current direction is decomposed
-// into vertical (z) and horizontal (xy) components, which receive Rv and Rh
-// respectively.
+// The PEC image kernel (TriangleKernelPerfectGround) computes the image
+// contribution with correct parameterisation on real basis functions.
+// Each Z-matrix entry is then scaled by an effective Fresnel coefficient
+// that blends Rv (vertical polarisation) and Rh (horizontal polarisation)
+// based on the current direction and the quasi-static grazing angle.
 func addRealGroundTriangleBasis(Z *mat.CDense, bases []TriangleBasis, realSegs, imageSegs []Segment, k, omega, sigma, epsilonR float64) {
 	epsilonC := ComplexPermittivity(epsilonR, sigma, omega)
-
-	// Build image basis functions (same geometry as perfect ground)
-	imageBases := make([]TriangleBasis, len(bases))
-	for i, b := range bases {
-		var imgLeft, imgRight *Segment
-		if b.SegLeft != nil {
-			s := imageSegs[b.SegLeft.Index]
-			imgLeft = &s
-		}
-		if b.SegRight != nil {
-			s := imageSegs[b.SegRight.Index]
-			imgRight = &s
-		}
-		imageBases[i] = TriangleBasis{
-			NodeIndex:       i,
-			NodePos:         [3]float64{b.NodePos[0], b.NodePos[1], -b.NodePos[2]},
-			SegLeft:         imgLeft,
-			SegRight:        imgRight,
-			ChargeDensLeft:  b.ChargeDensLeft,
-			ChargeDensRight: b.ChargeDensRight,
-		}
-	}
 
 	vecPrefactor := complex(0, omega*Mu0/(4.0*math.Pi))
 	k2 := k * k
@@ -121,12 +99,9 @@ func addRealGroundTriangleBasis(Z *mat.CDense, bases []TriangleBasis, realSegs, 
 	n := len(bases)
 	for i := 0; i < n; i++ {
 		for j := 0; j < n; j++ {
-			vecTerm, scaTerm := TriangleKernel(bases[i], imageBases[j], k, omega, nil)
+			vecTerm, scaTerm := TriangleKernelPerfectGround(bases[i], bases[j], k)
 
-			// Compute the quasi-static grazing angle from the geometry:
-			// ψ = arctan(|z_obs + z_src| / ρ) where ρ is horizontal distance.
-			// z_obs is the real basis node height, z_src is the real basis node height
-			// (image is at -z_src, so |z_obs - (-z_src)| = |z_obs + z_src|).
+			// Quasi-static grazing angle from basis node geometry.
 			obsZ := bases[i].NodePos[2]
 			srcZ := bases[j].NodePos[2]
 			vertDist := math.Abs(obsZ + srcZ)
@@ -137,23 +112,18 @@ func addRealGroundTriangleBasis(Z *mat.CDense, bases []TriangleBasis, realSegs, 
 
 			psi := math.Atan2(vertDist, horizDist)
 			if psi < 0.01 {
-				psi = 0.01 // avoid exact grazing (numerically stable)
+				psi = 0.01
 			}
 
 			rv := FresnelRV(psi, epsilonC)
 			rh := FresnelRH(psi, epsilonC)
 
-			// Determine the dominant current direction for this basis pair.
-			// Average the z-component of the segment directions touching each basis.
 			vertFracI := basisVerticalFraction(bases[i])
 			vertFracJ := basisVerticalFraction(bases[j])
 			vertFrac := (vertFracI + vertFracJ) / 2.0
-
-			// Blend Rv (vertical) and Rh (horizontal) based on current orientation
 			rEff := complex(vertFrac, 0)*rv + complex(1-vertFrac, 0)*rh
 
 			val := rEff * (vecPrefactor*vecTerm + scaPrefactor*scaTerm)
-
 			old := Z.At(i, j)
 			Z.Set(i, j, old+val)
 		}

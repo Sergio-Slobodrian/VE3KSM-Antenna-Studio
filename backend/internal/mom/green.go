@@ -248,6 +248,149 @@ func TriangleKernel(basisM, basisN TriangleBasis, k, omega float64, segments []S
 	return vectorTerm, scalarTerm
 }
 
+// TriangleKernelPerfectGround computes the PEC ground-plane image
+// contribution to the impedance matrix element between two real basis
+// functions.
+//
+// Instead of constructing separate image basis functions (which breaks
+// the triangle-basis parameterisation for ground-connected wires), this
+// folds the half-space Green's function directly into the quadrature
+// over the real basis functions.  For each pair of quadrature points
+// (pa on basis M, pb on basis N), it computes:
+//
+//	pb_image = (pb.x, pb.y, −pb.z)        reflect source across z = 0
+//	R_image  = |pa − pb_image|             distance to image point
+//
+// Vector potential image term (PEC image current = (−Jx, −Jy, +Jz)):
+//
+//	dirDotImage = ŝ_a · (−sb.x, −sb.y, +sb.z)
+//	vecInt += φ_m · φ_n · dirDotImage · ψ(R_image)
+//
+// Scalar potential image term (PEC image charge = −ρ):
+//
+//	scaInt −= ψ(R_image)
+//
+// The caller multiplies (vecTerm, scaTerm) by the usual MPIE prefactors
+// jωμ₀/(4π) and −jωμ₀/(4πk²), exactly like TriangleKernel.
+func TriangleKernelPerfectGround(basisM, basisN TriangleBasis, k float64) (vectorTerm, scalarTerm complex128) {
+	nQuad := 8
+
+	type segInfo struct {
+		seg       *Segment
+		isRight   bool
+		chargeDen float64
+	}
+
+	segsM := []segInfo{}
+	if basisM.SegLeft != nil {
+		segsM = append(segsM, segInfo{basisM.SegLeft, false, basisM.ChargeDensLeft})
+	}
+	if basisM.SegRight != nil {
+		segsM = append(segsM, segInfo{basisM.SegRight, true, basisM.ChargeDensRight})
+	}
+
+	segsN := []segInfo{}
+	if basisN.SegLeft != nil {
+		segsN = append(segsN, segInfo{basisN.SegLeft, false, basisN.ChargeDensLeft})
+	}
+	if basisN.SegRight != nil {
+		segsN = append(segsN, segInfo{basisN.SegRight, true, basisN.ChargeDensRight})
+	}
+
+	nodes, weights := GaussLegendre(nQuad)
+	nodesHQ, weightsHQ := GaussLegendre(nQuad * 2)
+
+	for _, sm := range segsM {
+		for _, sn := range segsN {
+			segA := sm.seg
+			segB := sn.seg
+
+			// Use higher-order quadrature when real segments coincide,
+			// because the image is then relatively close (especially
+			// for segments near the ground plane).
+			selfTerm := segA.Index == segB.Index
+			radius := segA.Radius
+			if segB.Radius > radius {
+				radius = segB.Radius
+			}
+
+			qNodes := nodes
+			qWeights := weights
+			nq := nQuad
+			if selfTerm {
+				qNodes = nodesHQ
+				qWeights = weightsHQ
+				nq = nQuad * 2
+			}
+
+			// PEC image current direction: (−dx, −dy, +dz)
+			dirDotImage := -segA.Direction[0]*segB.Direction[0] -
+				segA.Direction[1]*segB.Direction[1] +
+				segA.Direction[2]*segB.Direction[2]
+
+			var vecInt, scaInt complex128
+
+			for p := 0; p < nq; p++ {
+				wp := qWeights[p]
+				tp := qNodes[p]
+				pa := [3]float64{
+					segA.Center[0] + tp*segA.HalfLength*segA.Direction[0],
+					segA.Center[1] + tp*segA.HalfLength*segA.Direction[1],
+					segA.Center[2] + tp*segA.HalfLength*segA.Direction[2],
+				}
+
+				var phiM float64
+				if sm.isRight {
+					phiM = (1 - tp) / 2
+				} else {
+					phiM = (1 + tp) / 2
+				}
+
+				for q := 0; q < nq; q++ {
+					wq := qWeights[q]
+					tq := qNodes[q]
+					pb := [3]float64{
+						segB.Center[0] + tq*segB.HalfLength*segB.Direction[0],
+						segB.Center[1] + tq*segB.HalfLength*segB.Direction[1],
+						segB.Center[2] + tq*segB.HalfLength*segB.Direction[2],
+					}
+
+					var phiN float64
+					if sn.isRight {
+						phiN = (1 - tq) / 2
+					} else {
+						phiN = (1 + tq) / 2
+					}
+
+					// Image of source point: reflect z across ground plane
+					pbImage := [3]float64{pb[0], pb[1], -pb[2]}
+
+					// Distance to image.  Use reduced kernel (add wire
+					// radius) for same-segment pairs since the image can
+					// be very close when the segment is near z = 0.
+					RImage := dist(pa, pbImage, selfTerm, radius)
+					psiImage := psi(k, RImage)
+
+					// Vector potential: φ_m · φ_n · dirDotImage · ψ(R_image)
+					vecInt += complex(wp*wq*phiM*phiN*dirDotImage, 0) * psiImage
+
+					// Scalar potential: −ψ(R_image)  (PEC: ρ_image = −ρ)
+					scaInt -= complex(wp*wq, 0) * psiImage
+				}
+			}
+
+			jacobian := complex(segA.HalfLength*segB.HalfLength, 0)
+			vecInt *= jacobian
+			scaInt *= jacobian
+
+			vectorTerm += vecInt
+			scalarTerm += complex(sm.chargeDen*sn.chargeDen, 0) * scaInt
+		}
+	}
+
+	return vectorTerm, scalarTerm
+}
+
 // --- Legacy functions retained for backward compatibility ---
 
 // PocklingtonKernel was the original point-matching kernel used before the

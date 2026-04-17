@@ -1,6 +1,7 @@
 package api
 
 import (
+	"fmt"
 	"net/http"
 
 	"antenna-studio/backend/internal/geometry"
@@ -131,6 +132,198 @@ func HandleGenerateTemplate(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusNotFound, ErrorResponse{Error: "template not found: " + name})
+}
+
+// HandleNearField is the Gin handler for POST /api/nearfield.
+// It runs a MoM simulation and then computes the near-field E/H on a
+// user-specified observation grid.  The request extends SimulateRequest
+// with near-field grid parameters.
+func HandleNearField(c *gin.Context) {
+	var req NearFieldAPIRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
+		return
+	}
+
+	if err := req.Sim.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Validate near-field grid parameters
+	if req.Grid.Steps1 < 2 || req.Grid.Steps2 < 2 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "steps1 and steps2 must be >= 2"})
+		return
+	}
+	if req.Grid.Steps1 > 200 || req.Grid.Steps2 > 200 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "steps1 and steps2 must be <= 200"})
+		return
+	}
+	if req.Grid.Min1 >= req.Grid.Max1 || req.Grid.Min2 >= req.Grid.Max2 {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "min must be < max for both axes"})
+		return
+	}
+	plane := req.Grid.Plane
+	if plane != "xy" && plane != "xz" && plane != "yz" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "plane must be xy, xz, or yz"})
+		return
+	}
+
+	input := simulateRequestToInput(req.Sim)
+
+	nfReq := mom.NearFieldRequest{
+		Plane:      req.Grid.Plane,
+		FixedCoord: req.Grid.FixedCoord,
+		Min1:       req.Grid.Min1,
+		Max1:       req.Grid.Max1,
+		Min2:       req.Grid.Min2,
+		Max2:       req.Grid.Max2,
+		Steps1:     req.Grid.Steps1,
+		Steps2:     req.Grid.Steps2,
+	}
+
+	result, err := mom.SimulateNearField(input, nfReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "near-field computation failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// HandleOptimize is the Gin handler for POST /api/optimize.
+// It runs a PSO optimisation loop that tunes antenna geometry parameters
+// to minimise a user-defined composite objective (SWR, gain, etc.).
+// The request bundles the base antenna, tuneable variables with bounds,
+// objective goals, optional band evaluation, and PSO hyper-parameters.
+func HandleOptimize(c *gin.Context) {
+	var req OptimizeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
+		return
+	}
+
+	if err := req.Sim.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Validate variables
+	validFields := map[string]bool{
+		"x1": true, "y1": true, "z1": true,
+		"x2": true, "y2": true, "z2": true,
+		"radius": true,
+	}
+	for i, v := range req.Variables {
+		if !validFields[v.Field] {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error: fmt.Sprintf("variable %d: invalid field %q", i, v.Field),
+			})
+			return
+		}
+		if v.WireIndex < 0 || v.WireIndex >= len(req.Sim.Wires) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error: fmt.Sprintf("variable %d: wire_index %d out of range", i, v.WireIndex),
+			})
+			return
+		}
+	}
+
+	// Validate goals
+	validMetrics := map[string]bool{
+		"swr": true, "gain": true, "front_to_back": true,
+		"impedance_r": true, "impedance_x": true, "efficiency": true,
+		"beamwidth_az": true, "beamwidth_el": true,
+	}
+	for i, g := range req.Goals {
+		if !validMetrics[g.Metric] {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error: fmt.Sprintf("goal %d: unknown metric %q", i, g.Metric),
+			})
+			return
+		}
+	}
+
+	// Cap iterations to prevent runaway compute
+	if req.Iterations > 100 {
+		req.Iterations = 100
+	}
+	if req.Particles > 50 {
+		req.Particles = 50
+	}
+
+	input := simulateRequestToInput(req.Sim)
+
+	// Build solver-level request
+	optReq := mom.OptimRequest{
+		Input:      input,
+		Goals:      make([]mom.OptimGoal, len(req.Goals)),
+		Variables:  make([]mom.OptimVariable, len(req.Variables)),
+		Particles:  req.Particles,
+		Iterations: req.Iterations,
+		Seed:       req.Seed,
+	}
+
+	if req.FreqStartMHz > 0 && req.FreqEndMHz > req.FreqStartMHz {
+		optReq.FreqStartHz = req.FreqStartMHz * 1e6
+		optReq.FreqEndHz = req.FreqEndMHz * 1e6
+		optReq.FreqSteps = req.FreqSteps
+		if optReq.FreqSteps < 2 {
+			optReq.FreqSteps = 5
+		}
+	}
+
+	for i, v := range req.Variables {
+		optReq.Variables[i] = mom.OptimVariable{
+			Name:      v.Name,
+			WireIndex: v.WireIndex,
+			Field:     v.Field,
+			Min:       v.Min,
+			Max:       v.Max,
+		}
+	}
+	for i, g := range req.Goals {
+		optReq.Goals[i] = mom.OptimGoal{
+			Metric: g.Metric,
+			Target: g.Target,
+			Weight: g.Weight,
+		}
+	}
+
+	result, err := mom.RunOptimizer(optReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "optimization failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
+// HandleCMA is the Gin handler for POST /api/cma.
+// It runs a Characteristic Mode Analysis on the antenna structure at the
+// specified frequency.  The request body is the same SimulateRequest used by
+// /api/simulate (the source field is required by validation but ignored by
+// the CMA solver because CMA is source-free by definition).
+func HandleCMA(c *gin.Context) {
+	var req SimulateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	input := simulateRequestToInput(req)
+	result, err := mom.SimulateCMA(input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "CMA failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
 }
 
 // simulateRequestToInput converts an API request DTO to the MoM solver's

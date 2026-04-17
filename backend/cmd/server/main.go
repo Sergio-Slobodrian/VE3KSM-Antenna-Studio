@@ -61,6 +61,9 @@ func main() {
 	router.POST("/api/nec2/import", api.HandleNEC2Import)
 	router.POST("/api/nec2/export", api.HandleNEC2Export)
 	router.POST("/api/match", api.HandleMatch)
+	router.POST("/api/nearfield", api.HandleNearField)
+	router.POST("/api/cma", api.HandleCMA)
+	router.POST("/api/optimize", api.HandleOptimize)
 
 	bundler.Register(router)
 

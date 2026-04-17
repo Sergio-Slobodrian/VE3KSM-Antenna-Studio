@@ -49,6 +49,22 @@ func TestChooseAnchors(t *testing.T) {
 	}
 }
 
+func TestChooseAnchorsPhysics(t *testing.T) {
+	// 10m vertical, 5-100 MHz sweep, 500 steps.
+	// ~6.3 half-wave resonances in band → need ~51 anchors.
+	got := chooseAnchorsPhysics(500, 5e6, 100e6, 9.95)
+	if got < 48 || got > 60 {
+		t.Errorf("chooseAnchorsPhysics(500, 5-100 MHz, 9.95m) = %d, want ~51", got)
+	}
+
+	// Short dipole 13-15 MHz, 50 steps — base heuristic should win.
+	got2 := chooseAnchorsPhysics(50, 13e6, 15e6, 5.0)
+	base := chooseAnchors(50)
+	if got2 < base {
+		t.Errorf("physics anchors %d < base %d for narrow sweep", got2, base)
+	}
+}
+
 // End-to-end: an interpolated sweep on a smooth dipole impedance curve
 // should match the exact sweep within a tight tolerance everywhere.
 func TestSweep_InterpolatedMatchesExact(t *testing.T) {

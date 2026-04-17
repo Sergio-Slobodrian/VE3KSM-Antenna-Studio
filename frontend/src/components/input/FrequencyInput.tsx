@@ -73,6 +73,20 @@ const FrequencyInput: React.FC = () => {
               step={1}
             />
           </div>
+          <div className="config-row">
+            <label>Sweep mode</label>
+            <select
+              value={frequency.sweepMode || 'auto'}
+              onChange={(e) =>
+                setFrequency({ sweepMode: e.target.value as 'auto' | 'exact' | 'interpolated' })
+              }
+              style={{ flex: 1 }}
+            >
+              <option value="auto">Auto</option>
+              <option value="exact">Exact (full solve every point)</option>
+              <option value="interpolated">Interpolated (PCHIP)</option>
+            </select>
+          </div>
         </>
       )}
     </div>

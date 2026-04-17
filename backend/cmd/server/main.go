@@ -64,6 +64,7 @@ func main() {
 	router.POST("/api/nearfield", api.HandleNearField)
 	router.POST("/api/cma", api.HandleCMA)
 	router.POST("/api/optimize", api.HandleOptimize)
+	router.POST("/api/pareto-optimize", api.HandleParetoOptimize)
 
 	bundler.Register(router)
 

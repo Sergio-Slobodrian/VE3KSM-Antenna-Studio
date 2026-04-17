@@ -19,6 +19,8 @@ import type {
   OptimVariable,
   OptimGoal,
   OptimResult,
+  ParetoObjective,
+  ParetoResult,
   Template,
 } from '@/types';
 
@@ -496,6 +498,51 @@ export async function runOptimizer(
     seed: options?.seed ?? 0,
   };
   return fetchJson<OptimResult>('/api/optimize', body);
+}
+
+// Pareto multi-objective optimizer (POST /api/pareto-optimize)
+
+/** Run NSGA-II Pareto multi-objective optimization.
+ *  Returns a Pareto front of non-dominated trade-off designs. */
+export async function runParetoOptimizer(
+  wires: Wire[],
+  source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
+  ground: GroundConfig,
+  frequency: FrequencyConfig,
+  referenceImpedance: number,
+  variables: OptimVariable[],
+  objectives: ParetoObjective[],
+  options?: {
+    freqStartMhz?: number;
+    freqEndMhz?: number;
+    freqSteps?: number;
+    popSize?: number;
+    generations?: number;
+    seed?: number;
+  },
+): Promise<ParetoResult> {
+  const body = {
+    sim: {
+      wires: buildWires(wires),
+      source: buildSource(source),
+      loads: buildLoads(loads),
+      transmission_lines: buildTLs(transmissionLines),
+      ground: buildGround(ground),
+      frequency_mhz: frequency.frequencyMhz,
+      reference_impedance: referenceImpedance,
+    },
+    variables,
+    objectives,
+    freq_start_mhz: options?.freqStartMhz ?? 0,
+    freq_end_mhz: options?.freqEndMhz ?? 0,
+    freq_steps: options?.freqSteps ?? 5,
+    pop_size: options?.popSize ?? 40,
+    generations: options?.generations ?? 30,
+    seed: options?.seed ?? 0,
+  };
+  return fetchJson<ParetoResult>('/api/pareto-optimize', body);
 }
 
 // Matching network designer (POST /api/match)

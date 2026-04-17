@@ -174,6 +174,20 @@ the hobbyist audience.
 
 - **Effort:** Medium–High
 
+### 13b. Pareto multi-objective optimization (NSGA-II) — *Status: shipped*
+
+NSGA-II (Deb et al. 2002) multi-objective optimizer returns a Pareto
+front of non-dominated trade-off designs instead of a single scalar
+optimum.  Supports any combination of objectives (minimize SWR,
+maximize gain, maximize F/B, etc.) with proper dominance ranking,
+crowding-distance diversity preservation, SBX crossover, and
+polynomial mutation.  Frontend has a dedicated "Pareto" tab with a
+2D interactive scatter plot (selectable axes), a solution table,
+and one-click "Apply Selected Design" to load any frontier point.
+Optional worst-case band evaluation across a frequency range.
+
+- **Effort:** Medium (shipped)
+
 ### 14. Characteristic Mode Analysis (CMA) — *Status: shipped*
 
 Generalized eigendecomposition of the existing Z-matrix to show which

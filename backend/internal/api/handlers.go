@@ -326,6 +326,117 @@ func HandleCMA(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// HandleParetoOptimize is the Gin handler for POST /api/pareto-optimize.
+// It runs an NSGA-II multi-objective optimization that returns a Pareto
+// front of non-dominated trade-off designs.
+func HandleParetoOptimize(c *gin.Context) {
+	var req ParetoOptimizeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
+		return
+	}
+
+	if err := req.Sim.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	// Validate variables
+	validFields := map[string]bool{
+		"x1": true, "y1": true, "z1": true,
+		"x2": true, "y2": true, "z2": true,
+		"radius": true,
+	}
+	for i, v := range req.Variables {
+		if !validFields[v.Field] {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error: fmt.Sprintf("variable %d: invalid field %q", i, v.Field),
+			})
+			return
+		}
+		if v.WireIndex < 0 || v.WireIndex >= len(req.Sim.Wires) {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error: fmt.Sprintf("variable %d: wire_index %d out of range", i, v.WireIndex),
+			})
+			return
+		}
+	}
+
+	// Validate objectives
+	validMetrics := map[string]bool{
+		"swr": true, "gain": true, "front_to_back": true,
+		"impedance_r": true, "impedance_x": true, "efficiency": true,
+		"beamwidth_az": true, "beamwidth_el": true,
+	}
+	validDirs := map[string]bool{"minimize": true, "maximize": true}
+	for i, obj := range req.Objectives {
+		if !validMetrics[obj.Metric] {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error: fmt.Sprintf("objective %d: unknown metric %q", i, obj.Metric),
+			})
+			return
+		}
+		if !validDirs[obj.Direction] {
+			c.JSON(http.StatusBadRequest, ErrorResponse{
+				Error: fmt.Sprintf("objective %d: direction must be 'minimize' or 'maximize'", i),
+			})
+			return
+		}
+	}
+
+	// Cap to prevent runaway compute
+	if req.Generations > 60 {
+		req.Generations = 60
+	}
+	if req.PopSize > 80 {
+		req.PopSize = 80
+	}
+
+	input := simulateRequestToInput(req.Sim)
+
+	paretoReq := mom.ParetoRequest{
+		Input:       input,
+		Variables:   make([]mom.OptimVariable, len(req.Variables)),
+		Objectives:  make([]mom.ParetoObjective, len(req.Objectives)),
+		PopSize:     req.PopSize,
+		Generations: req.Generations,
+		Seed:        req.Seed,
+	}
+
+	if req.FreqStartMHz > 0 && req.FreqEndMHz > req.FreqStartMHz {
+		paretoReq.FreqStartHz = req.FreqStartMHz * 1e6
+		paretoReq.FreqEndHz = req.FreqEndMHz * 1e6
+		paretoReq.FreqSteps = req.FreqSteps
+		if paretoReq.FreqSteps < 2 {
+			paretoReq.FreqSteps = 5
+		}
+	}
+
+	for i, v := range req.Variables {
+		paretoReq.Variables[i] = mom.OptimVariable{
+			Name:      v.Name,
+			WireIndex: v.WireIndex,
+			Field:     v.Field,
+			Min:       v.Min,
+			Max:       v.Max,
+		}
+	}
+	for i, obj := range req.Objectives {
+		paretoReq.Objectives[i] = mom.ParetoObjective{
+			Metric:    obj.Metric,
+			Direction: obj.Direction,
+		}
+	}
+
+	result, err := mom.RunParetoOptimizer(paretoReq)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "Pareto optimization failed: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}
+
 // simulateRequestToInput converts an API request DTO to the MoM solver's
 // internal SimulationInput type. This is the API-to-domain boundary.
 // It converts frequency from MHz to Hz and maps DTOs to solver structs.

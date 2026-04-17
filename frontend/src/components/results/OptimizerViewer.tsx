@@ -230,7 +230,7 @@ const OptimizerViewer: React.FC = () => {
             <select value={v.wire_index} onChange={(e) => updateVariable(i, { wire_index: +e.target.value })}
                     style={{ ...inputStyle, width: 70 }}>
               {wires.map((_, wi) => (
-                <option key={wi} value={wi}>Wire {wi}</option>
+                <option key={wi} value={wi}>Wire {wi + 1}</option>
               ))}
             </select>
             <select value={v.field} onChange={(e) => updateVariable(i, { field: e.target.value })}

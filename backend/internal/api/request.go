@@ -193,6 +193,27 @@ type OptimizeRequest struct {
 	Seed         int64            `json:"seed,omitempty"`
 }
 
+// ParetoObjectiveDTO describes one objective for Pareto optimization.
+type ParetoObjectiveDTO struct {
+	Metric    string `json:"metric" binding:"required"`
+	Direction string `json:"direction" binding:"required"` // "minimize" or "maximize"
+}
+
+// ParetoOptimizeRequest is the JSON body for POST /api/pareto-optimize.
+// It bundles the antenna definition, tuneable variables, and multiple
+// independent objectives for NSGA-II Pareto optimization.
+type ParetoOptimizeRequest struct {
+	Sim          SimulateRequest       `json:"sim" binding:"required"`
+	Variables    []OptimVariableDTO    `json:"variables" binding:"required,min=1"`
+	Objectives   []ParetoObjectiveDTO  `json:"objectives" binding:"required,min=2"`
+	FreqStartMHz float64               `json:"freq_start_mhz,omitempty"`
+	FreqEndMHz   float64               `json:"freq_end_mhz,omitempty"`
+	FreqSteps    int                   `json:"freq_steps,omitempty"`
+	PopSize      int                   `json:"pop_size,omitempty"`
+	Generations  int                   `json:"generations,omitempty"`
+	Seed         int64                 `json:"seed,omitempty"`
+}
+
 // validGroundTypes is the set of accepted ground type strings.
 // Empty string is not listed here; Validate() normalizes it to "free_space".
 var validGroundTypes = map[string]bool{

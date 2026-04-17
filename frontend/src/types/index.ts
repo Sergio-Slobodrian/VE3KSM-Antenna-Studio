@@ -317,6 +317,33 @@ export interface OptimResult {
   }[];
 }
 
+/** One objective for Pareto multi-objective optimization. */
+export interface ParetoObjective {
+  metric: string;
+  direction: 'minimize' | 'maximize';
+}
+
+/** One non-dominated design on the Pareto front. */
+export interface ParetoSolution {
+  params: Record<string, number>;
+  metrics: Record<string, number>;
+  rank: number;
+  wires: {
+    X1: number; Y1: number; Z1: number;
+    X2: number; Y2: number; Z2: number;
+    Radius: number; Segments: number;
+    Material: string;
+  }[];
+}
+
+/** Result of a Pareto (NSGA-II) optimization run. */
+export interface ParetoResult {
+  front: ParetoSolution[];
+  all_fronts: ParetoSolution[];
+  generations: number;
+  objectives: string[];
+}
+
 /** Supported display units for the UI; internal storage is always meters. */
 export type DisplayUnit = 'meters' | 'feet' | 'inches' | 'cm' | 'mm';
 

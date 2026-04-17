@@ -28,6 +28,7 @@ import MatchingNetwork from '@/components/results/MatchingNetwork';
 import NearFieldViewer from '@/components/results/NearFieldViewer';
 import CMAViewer from '@/components/results/CMAViewer';
 import OptimizerViewer from '@/components/results/OptimizerViewer';
+import ParetoViewer from '@/components/results/ParetoViewer';
 import PolarizationViewer from '@/components/results/PolarizationViewer';
 import WarningsBanner from '@/components/results/WarningsBanner';
 import SweepExport from '@/components/results/SweepExport';
@@ -45,7 +46,8 @@ type Tab =
   | 'nearfield'
   | 'polarization'
   | 'cma'
-  | 'optimizer';
+  | 'optimizer'
+  | 'pareto';
 
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 800;
@@ -105,6 +107,7 @@ const MainLayout: React.FC = () => {
     { id: 'polarization', label: 'Polarization' },
     { id: 'cma', label: 'CMA' },
     { id: 'optimizer', label: 'Optimizer' },
+    { id: 'pareto', label: 'Pareto' },
   ];
 
   const renderTabContent = () => {
@@ -122,6 +125,7 @@ const MainLayout: React.FC = () => {
       case 'polarization': return <PolarizationViewer />;
       case 'cma': return <CMAViewer />;
       case 'optimizer': return <OptimizerViewer />;
+      case 'pareto': return <ParetoViewer />;
     }
   };
 

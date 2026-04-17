@@ -398,3 +398,24 @@ export interface TemplateParam {
   type: string;
   default: number;
 }
+
+/** Result of a convergence check: 1x vs 2x segmentation comparison. */
+export interface ConvergenceResult {
+  impedance_r_1x: number;
+  impedance_x_1x: number;
+  swr_1x: number;
+  gain_dbi_1x: number;
+  total_segments_1x: number;
+  impedance_r_2x: number;
+  impedance_x_2x: number;
+  swr_2x: number;
+  gain_dbi_2x: number;
+  total_segments_2x: number;
+  delta_r_pct: number;
+  delta_x_pct: number;
+  delta_z_mag_pct: number;
+  delta_swr_pct: number;
+  delta_gain_db: number;
+  converged: boolean;
+  verdict: string;
+}

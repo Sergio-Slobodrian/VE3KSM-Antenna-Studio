@@ -22,6 +22,7 @@ import type {
   ParetoObjective,
   ParetoResult,
   TransientResult,
+  ConvergenceResult,
   Template,
 } from '@/types';
 
@@ -644,4 +645,21 @@ export async function designMatch(opts: {
     freq_mhz: opts.freqMHz,
     q_factor: opts.qFactor ?? 0,
   });
+}
+
+/** Run convergence check: simulate at 1x and 2x segmentation, report delta. */
+export async function checkConvergence(
+  wires: Wire[],
+  source: Source,
+  loads: Load[],
+  transmissionLines: TransmissionLine[],
+  ground: GroundConfig,
+  frequency: FrequencyConfig,
+  referenceImpedance: number,
+): Promise<ConvergenceResult> {
+  const body = buildSimulateRequest(
+    wires, source, loads, transmissionLines,
+    ground, frequency, referenceImpedance,
+  );
+  return fetchJson<ConvergenceResult>('/api/convergence', body);
 }

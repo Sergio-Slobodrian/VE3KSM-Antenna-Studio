@@ -31,6 +31,7 @@ import OptimizerViewer from '@/components/results/OptimizerViewer';
 import ParetoViewer from '@/components/results/ParetoViewer';
 import TransientViewer from '@/components/results/TransientViewer';
 import PolarizationViewer from '@/components/results/PolarizationViewer';
+import ConvergenceViewer from '@/components/results/ConvergenceViewer';
 import WarningsBanner from '@/components/results/WarningsBanner';
 import SweepExport from '@/components/results/SweepExport';
 
@@ -49,7 +50,8 @@ type Tab =
   | 'cma'
   | 'optimizer'
   | 'pareto'
-  | 'transient';
+  | 'transient'
+  | 'convergence';
 
 const MIN_PANEL_WIDTH = 200;
 const MAX_PANEL_WIDTH = 800;
@@ -111,6 +113,7 @@ const MainLayout: React.FC = () => {
     { id: 'optimizer', label: 'Optimizer' },
     { id: 'pareto', label: 'Pareto' },
     { id: 'transient', label: 'Transient' },
+    { id: 'convergence', label: 'Convergence' },
   ];
 
   const renderTabContent = () => {
@@ -130,6 +133,7 @@ const MainLayout: React.FC = () => {
       case 'optimizer': return <OptimizerViewer />;
       case 'pareto': return <ParetoViewer />;
       case 'transient': return <TransientViewer />;
+      case 'convergence': return <ConvergenceViewer />;
     }
   };
 

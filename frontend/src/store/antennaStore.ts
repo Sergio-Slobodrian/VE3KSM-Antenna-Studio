@@ -26,6 +26,7 @@ import type {
   ParetoResult,
   ParetoObjective,
   TransientResult,
+  ConvergenceResult,
 } from '@/types';
 
 /** Full shape of the Zustand store: state fields + action methods. */
@@ -68,6 +69,9 @@ interface AntennaState {
   /** Cached transient analysis result. */
   transientResult: TransientResult | null;
 
+  /** Cached convergence check result. */
+  convergenceResult: ConvergenceResult | null;
+
   setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
@@ -97,6 +101,7 @@ interface AntennaState {
   setParetoVariables: (vars: OptimVariable[]) => void;
   setParetoObjectives: (objs: ParetoObjective[]) => void;
   setTransientResult: (result: TransientResult | null) => void;
+  setConvergenceResult: (result: ConvergenceResult | null) => void;
 }
 
 const defaultWireId = uuidv4();
@@ -164,6 +169,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     { metric: 'gain', direction: 'maximize' },
   ],
   transientResult: null,
+  convergenceResult: null,
 
   // --- Actions ---
 
@@ -260,6 +266,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
       optimResult: null,
       paretoResult: null,
       transientResult: null,
+      convergenceResult: null,
       error: null,
     }),
 
@@ -285,4 +292,5 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   setParetoVariables: (vars) => set({ paretoVariables: vars }),
   setParetoObjectives: (objs) => set({ paretoObjectives: objs }),
   setTransientResult: (result) => set({ transientResult: result }),
+  setConvergenceResult: (result) => set({ convergenceResult: result }),
 }));

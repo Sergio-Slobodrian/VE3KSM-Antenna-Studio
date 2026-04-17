@@ -246,7 +246,12 @@ plus headline metrics (peak amplitude, peak time, ringdown time to
   CSV: freq / R / X / |Z| / SWR / Γ / RL.  Touchstone v1.1 .s1p
   RI-format, Hz freq, configurable Z₀.
 - **Convergence reporter** — re-run at 2× segmentation and report
-  the relative change in driving-point impedance.
+  the relative change in driving-point impedance.  *Shipped.*
+  Backend `POST /api/convergence` runs the MoM solver at user
+  segments (1×) then at doubled segments (2×), returning impedance,
+  SWR, and gain at both levels plus relative deltas.  Frontend
+  "Convergence" tab shows a colour-coded comparison table, delta bar,
+  and a plain-English verdict (excellent / good / marginal / poor).
 
 ---
 

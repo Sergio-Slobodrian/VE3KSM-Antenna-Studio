@@ -580,3 +580,30 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 		BasisOrder:         mom.BasisOrder(req.BasisOrder),
 	}
 }
+
+// HandleConvergence is the Gin handler for POST /api/convergence.
+// It runs the MoM solver at the user's segmentation (1x) and again at 2x
+// segmentation, then reports the relative change in impedance, SWR, and gain.
+// A small delta means the mesh is well-resolved; a large delta means the user
+// should increase segment counts.
+func HandleConvergence(c *gin.Context) {
+	var req SimulateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid request: " + err.Error()})
+		return
+	}
+
+	if err := req.Validate(); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+
+	input := simulateRequestToInput(req)
+	result, err := mom.RunConvergenceCheck(input)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: fmt.Sprintf("convergence check failed: %v", err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, result)
+}

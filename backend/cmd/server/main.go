@@ -66,6 +66,7 @@ func main() {
 	router.POST("/api/optimize", api.HandleOptimize)
 	router.POST("/api/pareto-optimize", api.HandleParetoOptimize)
 	router.POST("/api/transient", api.HandleTransient)
+	router.POST("/api/convergence", api.HandleConvergence)
 
 	bundler.Register(router)
 

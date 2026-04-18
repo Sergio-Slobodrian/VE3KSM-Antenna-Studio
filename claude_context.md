@@ -138,6 +138,8 @@ All 17 numbered roadmap items are shipped. Additionally shipped:
 - Convergence reporter (1x vs 2x segmentation)
 - **Coated-wire dielectric loading** (IS-card model, εr shell + tanδ)
 - **Coating preset dropdown** in WireTable (Bare wire default, PVC, PE, PTFE, FEP, XLPE, Nylon, Rubber, Enamel, Ice, Water film)
+- **Global weather/environment loading** — dielectric film stacked on top of per-wire coatings, multi-layer IS-card formula
+- **Elevation polar cut full-circle rendering** — back lobe (phi+180°) now visible on left half of elevation plot
 
 ## Coated-Wire Dielectric Loading (IS-card model)
 
@@ -184,11 +186,61 @@ Dropdown defaults to "Bare wire". No "— Preset —" placeholder — bare wire 
 | Ice (weather) | 3.17 | 0.002 | 1 mm |
 | Water film (wet) | 80 | 0.2 | 0.1 mm |
 
+## Global Weather / Environment Loading
+
+**Physics:** Multi-layer generalised IS-card formula stacked inner→outer:
+```
+Z'_total = (jωμ₀/2π) · Σ_i (1/ε_{i−1}* − 1/ε_i*) · ln(b_i / b_{i−1}),  ε₀*=1
+```
+Layer 1 (optional): per-wire coating. Layer 2 (optional): global weather film.
+
+**Backend:**
+- `mom/coating.go`: `dielectricLayer` struct + `multilayerZPerUnitLen()` + `weatherLayer()` preset lookup + `applyCoatingLoading()` (replaces single-layer version)
+- `mom/types.go`: `WeatherConfig { Preset, Thickness, EpsR, LossTan }` + `Weather WeatherConfig` in `SimulationInput`
+- `api/request.go`: `WeatherDTO` + `Weather WeatherDTO` in `SimulateRequest` / `SweepRequest`
+- `api/handlers.go`: `simulateRequestToInput()` forwards all four weather fields
+- Weather applied in all simulation modes (simulate, sweep, nearfield, CMA, optimizer, pareto, transient, convergence)
+
+**Frontend:**
+- `types/index.ts`: `WeatherConfig`, `WeatherPreset`, `WeatherPresetDef`, `WEATHER_PRESETS` (Dry/Rain/Ice/Wet snow with εr, tanδ, default thickness)
+- `store/antennaStore.ts`: `weather: WeatherConfig` state + `setWeather(Partial<WeatherConfig>)` partial updater
+- `components/input/WeatherPanel.tsx`: four `config-row` controls (preset dropdown, film thickness unit-converted, εr, tanδ) — all disabled when preset=dry; preset selection fills all three numeric fields; header accent-coloured when active
+- `api/client.ts`: `buildWeather()` helper (returns undefined when dry/zero thickness); `weather` param threaded through all 8 API call functions
+- `components/layout/MainLayout.tsx`: `<WeatherPanel />` inserted between GroundConfig and FrequencyInput
+- Seven callers subscribe to `useAntennaStore((s) => s.weather)` and pass it to API: Header, CMAViewer, ConvergenceViewer, NearFieldViewer, TransientViewer, OptimizerViewer, ParetoViewer
+
+**Preset fallback logic:** Backend `weatherLayer(preset)` returns hardcoded εr/tanδ by preset name. If the frontend sends explicit `EpsR ≥ 1`, those values override the preset defaults, allowing per-field editing without breaking the preset mechanism.
+
+**Weather presets:**
+| Preset | εr | tanδ | Default film |
+|---|---|---|---|
+| Dry | — | — | 0 mm |
+| Rain | 80.0 | 0.05 | 0.1 mm |
+| Ice | 3.17 | 0.001 | 1.0 mm |
+| Wet snow | 1.6 | 0.005 | 3.0 mm |
+
+## Elevation Polar Cut — Full-Circle Rendering
+
+**Problem fixed:** The elevation cut previously sliced at `phi = peakPhi` only (theta 0→180°), so the back lobe (at `phi = peakPhi + 180°`) was invisible.
+
+**Backend (`metrics.go`):** `PolarCuts` now has `ElevationBackDeg` / `ElevationBackGainDB`, populated by `sliceAt(pattern, peakPhi+180°, false)`. JSON: `elevation_back_deg`, `elevation_back_gain_db`.
+
+**Frontend (`PolarCut.tsx`):** Elevation cut rendered as full 360° circle:
+- Front side (phi=peak): `angleRad = (-deg × π) / 180`, sorted ascending (-90→+90), traces bottom→right→top
+- Back side (phi=peak+180°): `angleRad = π + (deg × π) / 180`, sorted descending (+90→-90), traces top→left→bottom
+- Combined as one closed SVG path; spokes at 8 × 45° positions labelled 0°–315°
+
+**`api/client.ts`:** `RawCuts` interface + `polarCuts` mapping both include the two new back-side fields with `?? []` fallback.
+
 ## Remaining Roadmap (Polish)
 
 1. **Regression benchmarks** — pin DL6WU Yagi + K1FO design against published NEC-2 numbers.
 2. **Frequency-dependent ε/tanδ tables** for coatings (deferred from coating feature).
 3. **Per-wire b/a ratio warnings** when coating is thick relative to wire radius (deferred).
+
+## Tab Bar
+
+The tab bar (`.tab-bar` in `index.css`) uses `flex-wrap: wrap` so tabs wrap to a second row when the window is narrow rather than overflowing off-screen.
 
 ## Known Recurring Issues
 

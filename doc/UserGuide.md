@@ -20,6 +20,7 @@
    - 4.6 [Adding Lumped Loads](#46-adding-lumped-loads)
    - 4.7 [Adding Transmission-Line Elements](#47-adding-transmission-line-elements)
    - 4.8 [Choosing a Conductor Material](#48-choosing-a-conductor-material)
+   - 4.9 [Configuring Weather / Environment Loading](#49-configuring-weather--environment-loading)
 5. [Running a Simulation](#5-running-a-simulation)
    - 5.1 [Single-Frequency Simulation](#51-single-frequency-simulation)
    - 5.2 [Frequency Sweep](#52-frequency-sweep)
@@ -134,9 +135,10 @@ The Antenna Studio interface has three main zones:
 │  • 3D Wire Editor        │   Pattern 3D | SWR | Impedance |     │
 │  • Source Config         │   Currents | Smith Chart |           │
 │  • Ground Config         │   Matching | Near-Field |            │
-│  • Frequency Input       │   Polarization | CMA |               │
-│  • Load Editor           │   Optimizer | Pareto |               │
-│  • TL Editor             │   Transient | Convergence            │
+│  • Weather Panel         │   Polarization | CMA |               │
+│  • Frequency Input       │   Optimizer | Pareto |               │
+│  • Load Editor           │   Transient | Convergence            │
+│  • TL Editor             │                                      │
 │                          │                                      │
 ├──────────────────────────┴──────────────────────────────────────┤
 │  STATUS BAR: Z = R + jX Ω │ SWR x.x │ Gain x.x dBi │ warnings │
@@ -178,7 +180,13 @@ The **Wire Table** on the left panel lists every wire in the antenna. Each wire 
 | X₂, Y₂, Z₂ | End-point coordinates |
 | Radius | Wire cross-section radius |
 | Segments | Number of MoM segments to subdivide this wire into |
+| Coating Preset | Insulation material dropdown (Bare wire, PVC, PE, PTFE, FEP, XLPE, Nylon, Rubber, Enamel, Ice, Water film) |
+| Coat-t | Coating shell thickness (same unit as coordinates) |
+| εᵣ | Coating relative permittivity (greyed out when thickness = 0) |
+| tanδ | Coating loss tangent (greyed out when thickness = 0) |
 | Actions | Delete icon to remove the wire |
+
+Selecting a **Coating Preset** fills the thickness, εᵣ, and tanδ fields with standard values; you can edit them freely afterwards. Leave **Coat-t** at 0 (Bare wire) for an uninsulated conductor.
 
 **Unit selector:** A unit dropdown above the table applies to all coordinate and radius inputs. Switch between **m**, **ft**, **in**, **cm**, and **mm**. Values are converted and retained when you change units.
 
@@ -285,6 +293,29 @@ Select the wire conductor material from the **Material** dropdown (if shown). Op
 
 The solver applies frequency-dependent skin-effect resistance to each segment when a lossy material is selected, reducing radiation efficiency and affecting feed impedance slightly at high frequencies.
 
+### 4.9 Configuring Weather / Environment Loading
+
+The **Weather Panel** (between Ground Config and Frequency Input) applies a uniform dielectric film over every wire in the antenna — simulating precipitation, icing, or a wet-wire surface. This is layered on top of any per-wire coating using a multi-layer dielectric formula.
+
+**To enable weather loading:**
+
+1. Choose a **Preset**: Dry (off), Rain, Ice, or Wet snow.
+2. The film **Thickness**, **εᵣ**, and **tanδ** fields are filled automatically from the preset; edit any of them if needed.
+3. The panel header turns accent-coloured when a non-dry preset (or non-zero thickness) is active.
+
+Weather loading is applied in all simulation modes (single-frequency, sweep, near-field, CMA, optimizer, Pareto, transient, convergence).
+
+**Weather presets:**
+
+| Preset | εᵣ | tanδ | Default film thickness |
+|---|---|---|---|
+| Dry *(default, inactive)* | — | — | 0 mm |
+| Rain | 80.0 | 0.05 | 0.1 mm |
+| Ice | 3.17 | 0.001 | 1.0 mm |
+| Wet snow | 1.6 | 0.005 | 3.0 mm |
+
+**Typical effects:** Rain and wet-snow films raise feed-point resistance and lower resonant frequency slightly on insulated wires. Ice on a bare conductor shifts resonance downward by up to 1–2% and adds measurable reactance for thick accretion.
+
 ---
 
 ## 5. Running a Simulation
@@ -359,6 +390,8 @@ Controls:
 - **Cut angle** — the fixed angle of the complementary plane (e.g., elevation = 0° for the azimuth cut in the horizontal plane)
 
 The outer circle represents the peak gain level. A gray reference circle at 0 dBi is drawn for quick absolute reference. Gain values below −30 dB relative to the peak are truncated.
+
+**Elevation cut — full 360° display:** The elevation polar plot shows both the front lobe (at the peak azimuth angle φ) and the back lobe (at φ + 180°) on the same circle. The right half of the plot is the front side; the left half is the back side. This makes the front-to-back ratio immediately visible and reveals whether the antenna has significant rearward radiation. Spoke labels run 0°–315° at 45° intervals.
 
 ### 6.4 SWR Chart
 

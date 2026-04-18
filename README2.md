@@ -29,6 +29,33 @@ A web-based antenna design and electromagnetic simulation platform powered by a 
 
 ---
 
+## Weather / Environment Loading
+
+Global dielectric film applied uniformly to all wires, stacked on top of any per-wire coating using the multi-layer IS-card formula:
+
+```
+Z'_total = (jωμ₀/2π) · Σᵢ (1/εᵢ₋₁* − 1/εᵢ*) · ln(bᵢ / bᵢ₋₁),  ε₀* = 1
+```
+
+- Layer 1: per-wire coating (optional)
+- Layer 2: global weather film (optional)
+- Applied to all simulation modes (simulate, sweep, near-field, CMA, optimizer, Pareto, transient, convergence)
+- Configured in the **Weather Panel** between the Ground Config and Frequency Input controls
+- Film thickness is unit-converted with the rest of the geometry
+
+**Weather presets:**
+
+| Preset | εᵣ | tanδ | Default film |
+|---|---|---|---|
+| Dry *(default, inactive)* | — | — | 0 mm |
+| Rain | 80.0 | 0.05 | 0.1 mm |
+| Ice | 3.17 | 0.001 | 1.0 mm |
+| Wet snow | 1.6 | 0.005 | 3.0 mm |
+
+All four fields (preset, thickness, εᵣ, tanδ) are editable; selecting a preset fills the numeric fields as defaults. The panel header is accent-coloured when weather loading is active.
+
+---
+
 ## Frequency Analysis
 
 - **Single-frequency simulation** — full impedance, SWR, current distribution, and far-field pattern at one frequency
@@ -61,6 +88,27 @@ A web-based antenna design and electromagnetic simulation platform powered by a 
 - Copper, aluminum, brass, steel, and stainless steel
 - Frequency-dependent skin-effect loss calculated per material conductivity and permeability
 - Lossless (perfect conductor) mode available
+
+### Dielectric Wire Coatings
+- Per-wire insulating shell modelled as distributed series impedance (IS-card formula):
+  `Z'_coat = (jωμ₀/2π) · (1 − 1/εᵣ*) · ln(b/a)` where `a` = conductor radius, `b` = outer radius, `εᵣ* = εᵣ(1 − j·tanδ)`
+- Three coating parameters per wire: **coating thickness** (m), **relative permittivity εᵣ**, **loss tangent tanδ**
+- Applied in all simulation modes: single-frequency, sweep, near-field, CMA, optimizer, Pareto, transient, convergence
+- **Coating preset dropdown** with 10 standard insulation materials (editable after selection):
+
+| Preset | εᵣ | tanδ | Default thickness |
+|---|---|---|---|
+| Bare wire *(default)* | 1.0 | 0 | 0 |
+| PVC | 3.8 | 0.05 | 1.5 mm |
+| PE | 2.3 | 0.0002 | 2 mm |
+| PTFE (Teflon) | 2.1 | 0.0002 | 1 mm |
+| FEP | 2.1 | 0.0003 | 1 mm |
+| XLPE | 2.3 | 0.0003 | 2 mm |
+| Nylon (PA) | 3.5 | 0.04 | 1 mm |
+| Rubber (EPDM) | 3.0 | 0.02 | 2 mm |
+| Enamel/varnish | 3.5 | 0.04 | 0.08 mm |
+| Ice (weather) | 3.17 | 0.002 | 1 mm |
+| Water film (wet) | 80 | 0.2 | 0.1 mm |
 
 ### Voltage Source
 - Single excitation port on any wire segment with configurable segment position
@@ -126,6 +174,7 @@ All templates accept frequency as the primary parameter and auto-scale all dimen
 - Azimuth cut (constant elevation) and elevation cut (constant azimuth)
 - User-selectable cut plane angle
 - Overlaid reference circle at 0 dBi
+- **Elevation cut rendered as a full 360° circle** — front lobe (peak azimuth φ) on the right half, back lobe (φ + 180°) on the left half, combined into one closed SVG path; spokes at 45° intervals labelled 0°–315°
 
 ### Smith Chart
 - Normalized impedance locus plotted across the entire frequency sweep
@@ -247,9 +296,10 @@ All templates accept frequency as the primary parameter and auto-scale all dimen
 - Color-coded wire rendering; feed wire highlighted distinctly
 
 ### Input Forms
-- **Wire table** — spreadsheet-style coordinate entry with per-row unit conversion
+- **Wire table** — spreadsheet-style coordinate entry with per-row unit conversion; columns include coating preset, coating thickness, εᵣ, and tanδ for per-wire insulation
 - **Source configuration** — wire index, segment position, voltage magnitude
 - **Ground configuration** — type selector, permittivity (εr), conductivity (σ) for real ground
+- **Weather panel** — global dielectric film (preset, thickness, εᵣ, tanδ); accent-coloured header when active
 - **Frequency input** — single frequency or sweep range with start/stop/step and mode selector
 - **Load editor** — add/remove/edit R/L/C loads with series or parallel topology
 - **Transmission-line editor** — add/remove/edit TL elements with Z₀, electrical length, velocity factor

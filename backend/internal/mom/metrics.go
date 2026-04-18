@@ -29,12 +29,14 @@ type FarFieldMetrics struct {
 // Azimuth cut: gain vs azimuth at fixed elevation = PeakThetaDeg.
 // Elevation cut: gain vs elevation at fixed azimuth = PeakPhiDeg.
 type PolarCuts struct {
-	AzimuthDeg     []float64 `json:"azimuth_deg"`     // x-axis: azimuth angle (0..360)
-	AzimuthGainDB  []float64 `json:"azimuth_gain_db"` // gain at each azimuth (dBi)
-	ElevationDeg   []float64 `json:"elevation_deg"`   // x-axis: elevation = 90 - theta (-90..+90)
-	ElevationGainDB []float64 `json:"elevation_gain_db"`
-	FixedElevation float64   `json:"fixed_elevation_deg"` // elevation of the azimuth cut
-	FixedAzimuth   float64   `json:"fixed_azimuth_deg"`   // azimuth of the elevation cut
+	AzimuthDeg          []float64 `json:"azimuth_deg"`              // x-axis: azimuth angle (0..360)
+	AzimuthGainDB       []float64 `json:"azimuth_gain_db"`           // gain at each azimuth (dBi)
+	ElevationDeg        []float64 `json:"elevation_deg"`             // front side: elevation = 90 - theta (-90..+90)
+	ElevationGainDB     []float64 `json:"elevation_gain_db"`
+	ElevationBackDeg    []float64 `json:"elevation_back_deg"`        // back side (phi+180°): elevation = 90 - theta (-90..+90)
+	ElevationBackGainDB []float64 `json:"elevation_back_gain_db"`
+	FixedElevation      float64   `json:"fixed_elevation_deg"`       // elevation of the azimuth cut
+	FixedAzimuth        float64   `json:"fixed_azimuth_deg"`         // azimuth of the elevation cut
 }
 
 // ComputeFarFieldMetrics walks the 2°-grid pattern produced by
@@ -78,10 +80,17 @@ func ComputeFarFieldMetrics(pattern []PatternPoint, inputPowerW float64) (FarFie
 	rawTheta, rawGain := sliceAt(pattern, peak.PhiDeg, false)
 	cuts.ElevationDeg = make([]float64, len(rawTheta))
 	for i, th := range rawTheta {
-		// Convert polar angle (0=zenith) to elevation (90=zenith) for plotting.
 		cuts.ElevationDeg[i] = 90.0 - th
 	}
 	cuts.ElevationGainDB = rawGain
+
+	backPhi := math.Mod(peak.PhiDeg+180, 360)
+	backTheta, backGain := sliceAt(pattern, backPhi, false)
+	cuts.ElevationBackDeg = make([]float64, len(backTheta))
+	for i, th := range backTheta {
+		cuts.ElevationBackDeg[i] = 90.0 - th
+	}
+	cuts.ElevationBackGainDB = backGain
 
 	// 4. Beamwidths from the polar cuts.  -3 dB relative to the cut peak.
 	m.BeamwidthAzDeg = beamwidthDeg(cuts.AzimuthDeg, cuts.AzimuthGainDB, true)

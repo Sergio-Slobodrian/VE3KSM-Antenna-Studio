@@ -172,6 +172,8 @@ export interface PolarCuts {
   azimuthGainDb: number[];
   elevationDeg: number[];
   elevationGainDb: number[];
+  elevationBackDeg: number[];
+  elevationBackGainDb: number[];
   fixedElevationDeg: number;
   fixedAzimuthDeg: number;
 }

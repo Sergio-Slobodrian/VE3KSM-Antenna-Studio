@@ -217,6 +217,8 @@ interface RawCuts {
   azimuth_gain_db: number[];
   elevation_deg: number[];
   elevation_gain_db: number[];
+  elevation_back_deg: number[];
+  elevation_back_gain_db: number[];
   fixed_elevation_deg: number;
   fixed_azimuth_deg: number;
 }
@@ -301,6 +303,8 @@ export async function simulate(request: SimulateRequest): Promise<SimulationResu
       azimuthGainDb: raw.polar_cuts?.azimuth_gain_db ?? [],
       elevationDeg: raw.polar_cuts?.elevation_deg ?? [],
       elevationGainDb: raw.polar_cuts?.elevation_gain_db ?? [],
+      elevationBackDeg: raw.polar_cuts?.elevation_back_deg ?? [],
+      elevationBackGainDb: raw.polar_cuts?.elevation_back_gain_db ?? [],
       fixedElevationDeg: raw.polar_cuts?.fixed_elevation_deg ?? 0,
       fixedAzimuthDeg: raw.polar_cuts?.fixed_azimuth_deg ?? 0,
     },

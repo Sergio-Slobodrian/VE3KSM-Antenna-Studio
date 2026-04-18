@@ -31,14 +31,17 @@ const PolarCut: React.FC = () => {
   }
 
   const cuts = simulationResult.polarCuts;
-  const xs = cut === 'azimuth' ? cuts.azimuthDeg : cuts.elevationDeg;
-  const ys = cut === 'azimuth' ? cuts.azimuthGainDb : cuts.elevationGainDb;
-  const fixed = cut === 'azimuth'
+  const isAzimuth = cut === 'azimuth';
+  const fixed = isAzimuth
     ? `elevation ${cuts.fixedElevationDeg.toFixed(1)}°`
     : `azimuth ${cuts.fixedAzimuthDeg.toFixed(1)}°`;
-  const isFullCircle = cut === 'azimuth';
 
-  if (xs.length === 0) {
+  const frontXs = isAzimuth ? cuts.azimuthDeg : cuts.elevationDeg;
+  const frontYs = isAzimuth ? cuts.azimuthGainDb : cuts.elevationGainDb;
+  const backXs  = isAzimuth ? [] : (cuts.elevationBackDeg ?? []);
+  const backYs  = isAzimuth ? [] : (cuts.elevationBackGainDb ?? []);
+
+  if (frontXs.length === 0) {
     return (
       <div className="polar-cut-panel placeholder">
         <p className="muted">No {cut} cut data in this result.</p>
@@ -46,43 +49,62 @@ const PolarCut: React.FC = () => {
     );
   }
 
-  const peak = Math.max(...ys);
-  const points = xs.map((deg, i) => {
-    const dB = ys[i];
-    // Map dB to radial distance: peak → RADIUS, peak − DR_DB → 0.
+  const allGains = [...frontYs, ...backYs];
+  const peak = Math.max(...allGains);
+
+  const toXY = (deg: number, dB: number, isBack: boolean) => {
     let r = ((dB - peak + DR_DB) / DR_DB) * RADIUS;
     if (r < 0) r = 0;
     if (r > RADIUS) r = RADIUS;
     let angleRad: number;
-    if (isFullCircle) {
-      // Azimuth cut: 0° at top (east in plot), increasing clockwise.
+    if (isAzimuth) {
+      // Azimuth: 0° at top, increasing clockwise.
       angleRad = ((deg - 90) * Math.PI) / 180;
-    } else {
-      // Elevation cut: 0° (horizon) points right, +90° (zenith) at top.
-      // Negate so positive elevation arcs upward in SVG (y-down).
+    } else if (!isBack) {
+      // Elevation front side: 0° horizon right, +90° zenith top.
       angleRad = (-deg * Math.PI) / 180;
+    } else {
+      // Elevation back side: mirrored to left half.
+      // deg=0 → left (π), deg=90 → top (-π/2), deg=-90 → bottom (π/2)
+      angleRad = Math.PI + (deg * Math.PI) / 180;
     }
-    const x = CENTER + r * Math.cos(angleRad);
-    const y = CENTER + r * Math.sin(angleRad);
-    return { x, y, deg, dB };
-  });
+    return { x: CENTER + r * Math.cos(angleRad), y: CENTER + r * Math.sin(angleRad) };
+  };
 
-  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ') +
-    (isFullCircle ? ' Z' : '');
+  let path: string;
+  if (isAzimuth) {
+    const pts = frontXs.map((deg, i) => toXY(deg, frontYs[i], false));
+    path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ') + ' Z';
+  } else {
+    // Elevation: front sorted ascending (-90→+90), back sorted descending (+90→-90)
+    // This traces: bottom→right→top (front) then top→left→bottom (back) — closed circle.
+    const frontPairs = frontXs.map((deg, i) => ({ deg, dB: frontYs[i] })).sort((a, b) => a.deg - b.deg);
+    const backPairs  = backXs.map((deg, i) => ({ deg, dB: backYs[i] })).sort((a, b) => b.deg - a.deg);
+    const allPts = [
+      ...frontPairs.map(({ deg, dB }) => toXY(deg, dB, false)),
+      ...backPairs.map(({ deg, dB }) => toXY(deg, dB, true)),
+    ];
+    path = allPts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(' ') + ' Z';
+  }
 
   // Reference rings at -3, -10, -20, -30 dB (relative to peak).
   const ringDB = [-3, -10, -20, -30];
+
+  // Spokes: azimuth uses 8 cardinal/intercardinal; elevation uses 8 positions for full circle.
+  // elevSpokes: plotDeg where 0=fwd/right, 90=zenith/top, 180=back/left, 270=nadir/bottom.
+  const elevSpokeLabels: Record<number, string> = { 0: '0°', 45: '45°', 90: '90°', 135: '135°', 180: '180°', 225: '225°', 270: '270°', 315: '315°' };
+
   return (
     <div className="polar-cut-panel">
       <div className="polar-cut-controls">
         <button
-          className={`tab-btn ${cut === 'azimuth' ? 'tab-active' : ''}`}
+          className={`tab-btn ${isAzimuth ? 'tab-active' : ''}`}
           onClick={() => setCut('azimuth')}
         >
           Azimuth
         </button>
         <button
-          className={`tab-btn ${cut === 'elevation' ? 'tab-active' : ''}`}
+          className={`tab-btn ${!isAzimuth ? 'tab-active' : ''}`}
           onClick={() => setCut('elevation')}
         >
           Elevation
@@ -105,22 +127,34 @@ const PolarCut: React.FC = () => {
             </g>
           );
         })}
-        {/* Cardinal/spoke lines */}
-        {(isFullCircle ? [0, 45, 90, 135, 180, 225, 270, 315] : [-90, -45, 0, 45, 90]).map((deg) => {
-          const angleRad = isFullCircle
-            ? ((deg - 90) * Math.PI) / 180
-            : ((-deg * Math.PI) / 180);
-          const x = CENTER + RADIUS * Math.cos(angleRad);
-          const y = CENTER + RADIUS * Math.sin(angleRad);
-          return (
-            <g key={deg}>
-              <line x1={CENTER} y1={CENTER} x2={x} y2={y} stroke="#333" strokeWidth={1} />
-              <text x={x} y={y} fontSize={10} fill="#aaa" textAnchor="middle" dy="-4">
-                {deg}°
-              </text>
-            </g>
-          );
-        })}
+        {/* Spoke lines and labels */}
+        {isAzimuth
+          ? [0, 45, 90, 135, 180, 225, 270, 315].map((deg) => {
+              const angleRad = ((deg - 90) * Math.PI) / 180;
+              const x = CENTER + RADIUS * Math.cos(angleRad);
+              const y = CENTER + RADIUS * Math.sin(angleRad);
+              return (
+                <g key={deg}>
+                  <line x1={CENTER} y1={CENTER} x2={x} y2={y} stroke="#333" strokeWidth={1} />
+                  <text x={x} y={y} fontSize={10} fill="#aaa" textAnchor="middle" dy="-4">{deg}°</text>
+                </g>
+              );
+            })
+          : [0, 45, 90, 135, 180, 225, 270, 315].map((plotDeg) => {
+              // plotDeg: 0=fwd, 90=zenith, 180=back, 270=nadir
+              const angleRad = -(plotDeg * Math.PI) / 180;
+              const x = CENTER + RADIUS * Math.cos(angleRad);
+              const y = CENTER + RADIUS * Math.sin(angleRad);
+              return (
+                <g key={plotDeg}>
+                  <line x1={CENTER} y1={CENTER} x2={x} y2={y} stroke="#333" strokeWidth={1} />
+                  <text x={x} y={y} fontSize={10} fill="#aaa" textAnchor="middle" dy="-4">
+                    {elevSpokeLabels[plotDeg]}
+                  </text>
+                </g>
+              );
+            })
+        }
         {/* The trace */}
         <path d={path} fill="rgba(80,150,255,0.18)" stroke="#5096ff" strokeWidth={1.5} />
       </svg>

@@ -34,6 +34,7 @@ backend/
     load.go                    — Lumped R/L/C loads
     material.go                — Conductor material library + skin-effect
     transmission_line.go       — NEC-style 2-port TL elements
+    coating.go                 — Dielectric coating IS-card model (NEW)
     sweep_interpolated.go      — AWE/interpolated frequency sweeps
     nearfield.go               — Near-field E/H computation
     cma.go                     — Characteristic Mode Analysis (eigendecomposition)
@@ -47,6 +48,7 @@ backend/
     spline.go                  — Cubic spline for interpolation
     segment.go                 — Wire segmentation
     quadrature.go              — Numerical integration
+    coating_test.go            — Tests for coated-wire dielectric loading (NEW)
   internal/nec2/               — NEC-2 .nec import/export
   internal/match/              — Matching network synthesis (L/T/pi/gamma/beta)
   internal/geometry/           — Coordinate geometry helpers
@@ -64,7 +66,7 @@ frontend/
       layout/Header.tsx        — Top header bar
       layout/StatusBar.tsx     — Bottom status bar
       editor/WireEditor.tsx    — 3D Three.js wire geometry editor
-      input/                   — WireTable, SourceConfig, LoadEditor, TLEditor,
+      input/                   — WireTable, WireRow, SourceConfig, LoadEditor, TLEditor,
                                  GroundConfig, FrequencyInput, TemplateSelector
       results/                 — All result viewer tabs (see tab list below)
 ```
@@ -111,35 +113,82 @@ These survive tab switches so users don't lose expensive computation results. Th
 
 All spatial coordinates stored internally in **meters**, physics convention (**Z-up**). Display-unit conversion is handled at the UI layer via `METERS_TO_UNIT` factors (meters, feet, inches, cm, mm).
 
-## Shipped Roadmap Items (1–17 + polish)
+## Wire Type (types/index.ts)
 
-All 17 numbered roadmap items are shipped. See `ROADMAP.md` for details. Additionally shipped from the polish list: Touchstone/CSV sweep export, and convergence reporter.
+```typescript
+interface Wire {
+  id: string;
+  x1, y1, z1, x2, y2, z2: number;  // endpoints (meters)
+  radius: number;                    // meters
+  segments: number;
+  material: Material;                // '' = perfect conductor
+  coatingThickness: number;          // outer shell thickness (m); 0 = bare
+  coatingEpsR: number;               // relative permittivity εr
+  coatingLossTan: number;            // loss tangent tanδ
+}
+```
+
+The `lengthFields` set in WireRow.tsx includes `coatingThickness` for unit conversion.
+
+## Shipped Features (All Roadmap Items Complete)
+
+All 17 numbered roadmap items are shipped. Additionally shipped:
+
+- Touchstone/CSV sweep export
+- Convergence reporter (1x vs 2x segmentation)
+- **Coated-wire dielectric loading** (IS-card model, εr shell + tanδ)
+- **Coating preset dropdown** in WireTable (Bare wire default, PVC, PE, PTFE, FEP, XLPE, Nylon, Rubber, Enamel, Ice, Water film)
+
+## Coated-Wire Dielectric Loading (IS-card model)
+
+**Physics:** Distributed series impedance per unit length added to Z-matrix diagonal:
+```
+Z'_coat = (jωμ₀ / 2π) · (1 − 1/ε_r*) · ln(b/a)
+```
+where a = conductor radius, b = a + coatingThickness, ε_r* = εr(1 − j·tanδ).
+
+**Implementation:**
+- `mom/coating.go`: `applyCoatingLoading()` — adds coating impedance onto each interior basis (50/50 split over adjacent segment lengths), matching `applyMaterialLoss` convention
+- Called in both `Simulate()` and `SimulateNearField()` after material loss
+- `mom/types.go`: `Wire` struct has `CoatingThickness`, `CoatingEpsR`, `CoatingLossTan`
+- `api/request.go`: `WireDTO` has matching fields
+- `api/handlers.go`: `simulateRequestToInput()` forwards coating fields
+
+**Frontend:**
+- `types/index.ts`: `CoatingPreset` interface + `COATING_PRESETS` array (11 entries)
+- `components/input/WireTable.tsx`: "Coating Preset", "Coat-t", "εr", "tanδ" column headers
+- `components/input/WireRow.tsx`: preset dropdown (fills all three fields), coat-t input (unit-converted), εr/tanδ inputs (greyed out when thickness=0)
+- `api/client.ts`: `buildWires()` serializes coating fields as snake_case, omits when bare
+- `store/antennaStore.ts`: default wire + `addWire` + `loadTemplate` all include coating defaults
+
+**Tests** (`mom/coating_test.go`):
+1. `TestCoating_BareWireUnchanged` — zero-thickness coating produces identical impedance
+2. `TestCoating_ResonanceShift` — 2mm PVC on 20m dipole lowers resonance ≥0.4% and raises reactance ≥5Ω at bare resonant frequency
+3. `TestCoating_LossyCoatingAddsResistance` — tanδ=0.05 raises feed-point resistance
+
+**Coating Presets** (standard thicknesses, can be edited after applying):
+
+Dropdown defaults to "Bare wire". No "— Preset —" placeholder — bare wire is the first and default entry.
+
+| Preset | εr | tanδ | Default thickness |
+|---|---|---|---|
+| Bare wire *(default)* | 1.0 | 0 | 0 |
+| PVC | 3.8 | 0.05 | 1.5 mm |
+| PE | 2.3 | 0.0002 | 2 mm |
+| PTFE (Teflon) | 2.1 | 0.0002 | 1 mm |
+| FEP | 2.1 | 0.0003 | 1 mm |
+| XLPE | 2.3 | 0.0003 | 2 mm |
+| Nylon (PA) | 3.5 | 0.04 | 1 mm |
+| Rubber (EPDM) | 3.0 | 0.02 | 2 mm |
+| Enamel/varnish | 3.5 | 0.04 | 0.08 mm |
+| Ice (weather) | 3.17 | 0.002 | 1 mm |
+| Water film (wet) | 80 | 0.2 | 0.1 mm |
 
 ## Remaining Roadmap (Polish)
 
-From `ROADMAP.md`, still to do:
-
-1. **Coated-wire dielectric loading** — εr shell + thickness for insulated wires; 3–5% resonant frequency shift. **This is the next planned feature.**
-2. **Regression benchmarks** — pin DL6WU Yagi + K1FO design against published NEC-2 numbers.
-3. **Environmental knobs** — rain/ice as dielectric shell or tan δ bump.
-
-## Recent Session Work (This Chat)
-
-### 1. Persisted expensive results across tab switches
-Lifted CMA, Optimizer, Pareto, and Transient results (and Optimizer/Pareto config: variables, goals, objectives) from local `useState` into the global Zustand store so switching tabs doesn't lose expensive computation results.
-
-**Files changed:** `antennaStore.ts`, `CMAViewer.tsx`, `OptimizerViewer.tsx`, `ParetoViewer.tsx`, `TransientViewer.tsx`
-
-### 2. Convergence reporter
-New feature: `POST /api/convergence` runs MoM at user segments (1x) and doubled segments (2x), returns impedance/SWR/gain at both levels plus relative deltas and a plain-English verdict.
-
-**Files created:** `mom/convergence.go`, `ConvergenceViewer.tsx`
-**Files changed:** `handlers.go`, `main.go` (route), `request.go` (no new DTO needed — reuses SimulateRequest), `types/index.ts` (ConvergenceResult), `client.ts` (checkConvergence), `MainLayout.tsx` (new tab), `antennaStore.ts` (convergenceResult slot)
-
-### 3. Zoomable transient charts with CSV export
-Upgraded TransientViewer charts: clicking any chart opens a large modal overlay (900x480) with proper axis ticks (niceTicks algorithm), dim grid lines, chart title, and an "Export CSV" button. Escape or click-outside to dismiss.
-
-**Files changed:** `TransientViewer.tsx` — replaced simple `LineChart` with `DetailChart` + `ClickableChart` + `ZoomModal` components. Added `niceTicks()`, `formatTickLabel()`, `exportCsv()` helpers.
+1. **Regression benchmarks** — pin DL6WU Yagi + K1FO design against published NEC-2 numbers.
+2. **Frequency-dependent ε/tanδ tables** for coatings (deferred from coating feature).
+3. **Per-wire b/a ratio warnings** when coating is thick relative to wire radius (deferred).
 
 ## Known Recurring Issues
 

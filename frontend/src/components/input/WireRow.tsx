@@ -29,7 +29,7 @@ const WireRow: React.FC<WireRowProps> = ({ wire, index }) => {
   const isSelected = selectedWireId === wire.id;
   const factor = METERS_TO_UNIT[displayUnit];
 
-  const [coatingPreset, setCoatingPreset] = React.useState('');
+  const [coatingPreset, setCoatingPreset] = React.useState('bare');
 
   const applyCoatingPreset = (key: string) => {
     setCoatingPreset(key);
@@ -95,7 +95,6 @@ const WireRow: React.FC<WireRowProps> = ({ wire, index }) => {
           className="wire-input wire-material-select"
           title="Apply a standard coating preset"
         >
-          <option value="">— Preset —</option>
           {COATING_PRESETS.map((p) => (
             <option key={p.key} value={p.key}>{p.label}</option>
           ))}

@@ -135,7 +135,21 @@ New feature: `POST /api/convergence` runs MoM at user segments (1x) and doubled 
 **Files created:** `mom/convergence.go`, `ConvergenceViewer.tsx`
 **Files changed:** `handlers.go`, `main.go` (route), `request.go` (no new DTO needed — reuses SimulateRequest), `types/index.ts` (ConvergenceResult), `client.ts` (checkConvergence), `MainLayout.tsx` (new tab), `antennaStore.ts` (convergenceResult slot)
 
-### 3. Zoomable transient charts with CSV export
+### 3. Coated-wire dielectric loading
+NEC-2 IS-card model: cylindrical dielectric shell on any wire adds distributed series impedance per unit length to the Z-matrix diagonal. Complex permittivity `ε = ε₀·εr·(1 − j·tanδ)` gives:
+
+```
+Z'_coat = ln(b/a) / (2π · ω · ε₀ · εr · (tanδ + j))   [Ω/m]
+```
+
+Applied as half-segment averaging over each triangle basis (same convention as `applyMaterialLoss`). Resistive component (tanδ > 0) feeds `lossPerBasis` for efficiency accounting.
+
+**UI:** Wire table gains four new columns: Coating (preset dropdown: None/PTFE/PE/XLPE/Silicone/PVC/Kapton/Nylon/Custom), εr (editable number), Coat t (thickness, unit-converted), tan δ (loss tangent).
+
+**Files created:** none
+**Files changed:** `mom/types.go` (Wire + CoatingLossTangent), `mom/segment.go` (Segment), `mom/load.go` (applyCoating()), `mom/solver.go` (2× propagation + call), `mom/cma.go` (propagation + call), `api/request.go` (WireDTO + validation), `api/handlers.go` (mapping), `types/index.ts` (Wire + COATING_PRESETS), `store/antennaStore.ts` (defaults), `api/client.ts` (buildWires), `components/input/WireRow.tsx`, `components/input/WireTable.tsx`
+
+### 4. Zoomable transient charts with CSV export
 Upgraded TransientViewer charts: clicking any chart opens a large modal overlay (900x480) with proper axis ticks (niceTicks algorithm), dim grid lines, chart title, and an "Export CSV" button. Escape or click-outside to dismiss.
 
 **Files changed:** `TransientViewer.tsx` — replaced simple `LineChart` with `DetailChart` + `ClickableChart` + `ZoomModal` components. Added `niceTicks()`, `formatTickLabel()`, `exportCsv()` helpers.

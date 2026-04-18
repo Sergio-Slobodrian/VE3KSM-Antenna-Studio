@@ -108,6 +108,57 @@ func applyLoads(Z *mat.CDense, loads []Load, omega float64,
 	return nil
 }
 
+// applyCoating adds the distributed series impedance of a dielectric coating
+// (insulating sheath) to the Z-matrix diagonal for every basis function on
+// each coated wire.  This is the NEC-2 IS-card model: the cylindrical
+// dielectric shell (inner radius a = wire radius, outer radius b = a+t) acts
+// as a lossy capacitor per unit length.
+//
+// Using complex permittivity ε = ε₀·εr·(1 − j·tanδ), the impedance per
+// unit length is:
+//
+//	Z'_coat = ln(b/a) / (2π · ω · ε₀ · εr · (tanδ + j))   [Ω/m]
+//
+// When tanδ = 0 this reduces to the purely reactive lossless case.
+// The real part of Z'_coat represents dielectric loss and is tracked in
+// lossPerBasis for the radiation-efficiency calculation (pass nil to skip).
+//
+// The basis support spans two adjacent segments; we charge each basis with
+// half of each adjacent segment's contribution, matching the same convention
+// used by applyMaterialLoss.  Wires with CoatingThickness == 0 are skipped.
+func applyCoating(Z *mat.CDense, wires []Wire, omega float64,
+	segments []Segment, wireSegOffsets, wireSegCounts, wireBasisOffsets []int,
+	lossPerBasis []float64) {
+
+	for wi, w := range wires {
+		if w.CoatingThickness <= 0 || w.CoatingPermittivity < 1 {
+			continue
+		}
+		a := w.Radius
+		b := a + w.CoatingThickness
+		// Z' = ln(b/a) / (2π·ω·ε₀·εr · (tanδ + j))
+		scale := 2 * math.Pi * omega * Eps0 * w.CoatingPermittivity
+		zPerMeter := complex(math.Log(b/a), 0) / complex(scale*w.CoatingLossTangent, scale)
+
+		segOff := wireSegOffsets[wi]
+		nSeg := wireSegCounts[wi]
+		basisOff := wireBasisOffsets[wi]
+
+		for k := 0; k < nSeg-1; k++ {
+			seg1 := segments[segOff+k]
+			seg2 := segments[segOff+k+1]
+			avgLen := 0.5 * (2*seg1.HalfLength + 2*seg2.HalfLength)
+			zBasis := zPerMeter * complex(avgLen, 0)
+			bi := basisOff + k
+			cur := Z.At(bi, bi)
+			Z.Set(bi, bi, cur+zBasis)
+			if lossPerBasis != nil && bi < len(lossPerBasis) {
+				lossPerBasis[bi] += real(zBasis)
+			}
+		}
+	}
+}
+
 // resolveLoadBasis maps a (wire, segment) load specification to the global
 // basis index using the same nearest-interior-node rule as the source.
 // This keeps load and source placement intuitive and consistent: asking

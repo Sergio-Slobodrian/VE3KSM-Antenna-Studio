@@ -57,13 +57,16 @@ interface SweepRequest {
 
 // --- Request builders: strip client-only fields (id) and remap key casing ---
 
-/** Strip the client-side `id` field from wires and forward material. */
+/** Strip the client-side `id` field from wires and forward material + coating. */
 function buildWires(wires: Wire[]) {
   return wires.map((w) => ({
     x1: w.x1, y1: w.y1, z1: w.z1,
     x2: w.x2, y2: w.y2, z2: w.z2,
     radius: w.radius, segments: w.segments,
     material: w.material || undefined,
+    coating_permittivity: w.coatingPermittivity || undefined,
+    coating_thickness: w.coatingThickness || undefined,
+    coating_loss_tangent: w.coatingLossTangent || undefined,
   }));
 }
 

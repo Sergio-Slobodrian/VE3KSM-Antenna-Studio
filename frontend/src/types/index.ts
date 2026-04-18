@@ -17,6 +17,29 @@ export type Material =
   | 'silver'
   | 'gold';
 
+/** A dielectric coating preset: label shown in the dropdown and εr value. */
+export interface CoatingPreset {
+  label: string;
+  er: number;
+}
+
+/**
+ * Common wire coating materials with their relative permittivity εr.
+ * The first entry ("None") has er=0, meaning no coating.
+ * The last entry ("Custom") has er=-1 as a sentinel; selecting it leaves εr unchanged.
+ */
+export const COATING_PRESETS: CoatingPreset[] = [
+  { label: 'None',          er: 0   },
+  { label: 'PTFE (Teflon)', er: 2.1 },
+  { label: 'PE',            er: 2.3 },
+  { label: 'XLPE',          er: 2.3 },
+  { label: 'Silicone',      er: 2.9 },
+  { label: 'PVC',           er: 3.5 },
+  { label: 'Kapton',        er: 3.5 },
+  { label: 'Nylon',         er: 3.5 },
+  { label: 'Custom',        er: -1  },
+];
+
 /** Human-friendly labels for the material dropdown. */
 export const MATERIAL_LABELS: Record<Material, string> = {
   '': 'Perfect (lossless)',
@@ -33,6 +56,7 @@ export const MATERIAL_LABELS: Record<Material, string> = {
  *  Endpoints (x1,y1,z1)-(x2,y2,z2) are in meters, physics Z-up frame.
  *  `radius` is wire radius in meters; `segments` is the MoM discretisation count.
  *  `material` selects the conductor for skin-effect loss; '' = perfect conductor.
+ *  `coatingPermittivity` / `coatingThickness` describe an optional dielectric sheath.
  */
 export interface Wire {
   id: string;
@@ -45,6 +69,9 @@ export interface Wire {
   radius: number;
   segments: number;
   material: Material;
+  coatingPermittivity: number;
+  coatingThickness: number;
+  coatingLossTangent: number;
 }
 
 /** Voltage source placement: which wire and segment to excite, plus voltage magnitude. */

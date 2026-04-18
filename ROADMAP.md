@@ -1,0 +1,268 @@
+# VE3KSM Antenna Studio Roadmap
+
+A research-informed enhancement plan, ordered by ROI (user value per unit
+of implementation effort).  Items are derived from a survey of recent
+(2020–2026) wire-MoM literature and a feature-gap analysis against
+EZNEC, MMANA-GAL, 4nec2, xnec2c, and AN-SOF.
+
+Each item lists effort (Low / Medium / High), the primary files to
+touch, and the user-visible payoff.  Status is updated as work lands.
+
+---
+
+## Week 1 — Quick wins (low effort, high payoff)
+
+### 1. Lumped loads on segments — *Status: shipped*
+
+R / L / C in series and parallel topologies, applied to any segment of
+any wire.  The single biggest functional gap versus EZNEC/4nec2;
+unlocks traps, loading coils, resistive terminations, hat capacitors,
+folded-dipole stubs, lumped 4:1 baluns.
+
+- **Effort:** Low (1–2 days)
+- **Backend:** new `Load` struct in `backend/internal/mom/types.go`;
+  `Z_load(ω)` injected onto Z-matrix diagonal in `mom/zmatrix.go`;
+  request DTO + handler plumbing.
+- **Frontend:** new `LoadConfig` panel; rendering in current/
+  geometry views.
+
+### 2. Smith chart data + arbitrary-Z₀ VSWR — *Status: shipped*
+
+Hardcoded 50 Ω today.  Make the reference impedance a per-request
+parameter and return the complex reflection coefficient `S11` so the
+frontend can plot a Smith chart and report VSWR at user Z₀.
+
+- **Effort:** Low (half day backend, 1 day frontend)
+- **Backend:** add `reference_impedance` to simulate/sweep request
+  DTOs; compute Γ = (Z − Z₀)/(Z + Z₀), return as `{re, im}`.
+- **Frontend:** Smith chart canvas component (SVG with constant-R and
+  constant-X arcs); add to results pane.
+
+### 3. Far-field metrics + 2D polar cuts — *Status: shipped*
+
+The 3D pattern is computed but only directivity is surfaced.  Add
+front-to-back ratio, 3 dB beamwidth (E and H planes), main-lobe
+azimuth/elevation, sidelobe level, total radiated efficiency, and a
+2D polar cut (azimuth at fixed elevation, or elevation at fixed
+azimuth) — what users want for day-to-day work.
+
+- **Effort:** Low (1 day total)
+- **Backend:** post-process pass over the existing far-field grid in
+  `mom/farfield.go`; return new fields in `SimulationResult`.
+- **Frontend:** numeric metrics in results header; new polar plot
+  component (SVG or Recharts radial bar variant).
+
+### 4. Conductor materials + skin-effect loss — *Status: shipped*
+
+Wires currently carry only a radius (loss-free).  Add a material
+library (Cu, Al, brass, steel, stainless) and apply the surface
+impedance correction `Z_s = (1 + j) / (σ δ)` with `δ = 1/√(πfμσ)` to
+the Z-matrix diagonal.  Turns the solver into something that matches
+measured Q on loaded / electrically-small antennas.
+
+- **Effort:** Low–Medium (1–2 days)
+- **Backend:** new `material` field on `Wire`; lookup table; assembly
+  changes in `mom/zmatrix.go`.
+- **Frontend:** material dropdown in wire editor; default = Cu.
+
+### 5. Segmentation validator — *Status: shipped*
+
+Pre-flight checks that warn (don't block) when a wire violates known
+thin-wire-MoM accuracy rules:
+
+- segment length > λ/10 (λ/20 ideal, λ/10 minimum),
+- segment_length / radius < 2 (kernel validity limit),
+- adjacent segment lengths differ by > 2× (taper too aggressive),
+- wire endpoints share radius when junctioned.
+
+Each warning carries a severity, a pointer to the offending wire/
+segment, and a link to a remediation note.
+
+- **Effort:** Low (half day)
+- **Backend:** new `mom.Validate(geom, freq) []Warning`; called from
+  `/api/simulate` and returned alongside results.
+- **Frontend:** non-blocking warning banner above results.
+
+---
+
+## Week 2 — Solver and modeling depth
+
+### 6. Transmission-line elements — *Status: shipped*
+
+NEC-style 2-port TL elements stamped as a 2×2 Z-parameter block onto
+the Z-matrix.  Connects two basis functions (or one basis + a short /
+open termination for stubs).  Lossy via dB/m attenuation; velocity
+factor for non-air dielectric.  Frontend has a dedicated TLEditor.
+
+- **Effort:** Medium (shipped)
+
+### 7. Move matching-network synthesis to the backend — *Status: shipped*
+
+A frontend calculator already exists (`frontend/src/utils/matching.ts`,
+`components/results/MatchingNetwork.tsx`).  Move the math to Go,
+expose it via `/api/match`, and add π-match, T-match, gamma-match,
+and beta-match in addition to the existing L-match.
+
+- **Effort:** Medium
+
+### 8. AWE / vector-fitting for frequency sweeps — *Status: shipped*
+
+Rebuilding Z from scratch at every frequency in a 201-point sweep is
+the dominant runtime cost.  Asymptotic Waveform Evaluation (or simple
+rational fitting) over a small set of anchor frequencies cuts sweep
+time 10–50×.
+
+- **Effort:** Medium
+
+---
+
+## Week 3–4 — Numerics and ground
+
+### 9. GMRES + simple preconditioning — *Status: shipped*
+
+Restarted GMRES(50) with diagonal (Jacobi) preconditioning, working
+directly on the complex Z-matrix (no 2N real doubling).  Auto-dispatch:
+N ≤ 150 bases → LU, N > 150 → GMRES with LU fallback on non-convergence.
+Unlocks arrays, large Yagis, collinear stacks, and big quads without
+the O(N³) memory/time wall.
+
+- **Effort:** Medium (shipped)
+
+### 10. Complex-image ground model — *Status: shipped*
+
+Bannister (1986) complex-image method replaces the simple Fresnel
+reflection-coefficient image with an image at complex depth
+`z_img = -(z_src + 2/γ_g)` where `γ_g = jk₀√εc`.  The complex
+distance naturally captures the Sommerfeld lateral-wave and surface-
+wave contributions that the Fresnel approximation misses for near-
+field interactions (wires close to ground).  Far-field still uses
+standard Fresnel coefficients (accurate at large distance).
+Radial ground geometry deferred to a future polish item.
+
+- **Effort:** Medium (shipped)
+
+---
+
+## Month 2+ — Strategic
+
+### 11. NEC-2 import / export — *Status: shipped*
+
+Parser handles CM/CE/GW/GS/GE/GN/EX/LD/TL/FR/EN cards in free-format
+layout.  Writer emits a complete NEC-2 deck from a SimulationInput,
+including per-wire skin-effect via LD type 5.  Frontend has
+.nec ⬇ / .nec ⬆ buttons next to Save/Load JSON.
+
+- **Effort:** Medium (shipped)
+
+### 12. Higher-order basis functions — *Status: shipped*
+
+Piecewise-sinusoidal (King-type) and piecewise-quadratic (Hermite)
+basis functions alongside the default triangle (rooftop) basis.
+Generalised MPIE kernel with abstract shape-function evaluation,
+12-point quadrature for non-triangle bases, concurrent Z-matrix
+assembly, and shape-function-specific current interpolation.
+Frontend exposes a basis-function selector in the frequency panel.
+
+- **Effort:** High (shipped)
+
+### 13. Optimization loop (PSO / differential evolution) — *Status: shipped*
+
+Wrap `Simulate()` in an objective function ("max gain + min SWR over
+14.0–14.35 MHz"); expose tunable parameters on templates (Yagi
+element lengths/spacings, matching dimensions).  Game-changer for
+the hobbyist audience.
+
+- **Effort:** Medium–High
+
+### 13b. Pareto multi-objective optimization (NSGA-II) — *Status: shipped*
+
+NSGA-II (Deb et al. 2002) multi-objective optimizer returns a Pareto
+front of non-dominated trade-off designs instead of a single scalar
+optimum.  Supports any combination of objectives (minimize SWR,
+maximize gain, maximize F/B, etc.) with proper dominance ranking,
+crowding-distance diversity preservation, SBX crossover, and
+polynomial mutation.  Frontend has a dedicated "Pareto" tab with a
+2D interactive scatter plot (selectable axes), a solution table,
+and one-click "Apply Selected Design" to load any frontier point.
+Optional worst-case band evaluation across a frequency range.
+
+- **Effort:** Medium (shipped)
+
+### 14. Characteristic Mode Analysis (CMA) — *Status: shipped*
+
+Generalized eigendecomposition of the existing Z-matrix to show which
+modes resonate and how well each is excited.  Research frontier for
+electrically-small antenna design.
+
+- **Effort:** Medium
+
+### 15. Near-field (E/H) at arbitrary points — *Status: shipped*
+
+Hertzian-dipole superposition evaluates exact near-field E and H on a
+user-specified 2D observation plane (XZ, XY, or YZ).  Backend exposes
+`POST /api/nearfield`; frontend has a heat-map viewer with jet colour
+scale, wire overlay, selectable |E|/|H| display, and adjustable dynamic
+range.  Supports free-space and PEC ground (image contributions).
+
+- **Effort:** Medium (shipped)
+
+### 16. Polarization analysis — *Status: shipped*
+
+Full Stokes-parameter polarisation analysis derived from complex Eθ/Eφ
+far-field components.  Computes axial ratio (dB), tilt angle, polarisation
+type (linear / circular / elliptical), and rotation sense (RHCP / LHCP)
+at every pattern direction.  Frontend "Polarization" tab shows headline
+metrics at peak-gain, a polarisation ellipse visualisation, and
+principal-plane AR and tilt-angle cuts with a 3 dB CP reference line.
+
+- **Effort:** Medium (shipped)
+
+### 17. Time-domain transient analysis — *Status: shipped*
+
+Frequency-domain IFFT-based transient analysis at the antenna feed
+point.  Runs a dense MoM sweep across a user-specified band, computes
+the transfer function (reflection Γ(f), input voltage Z/(Z+Z₀), or
+feed current 1/Z(f)), multiplies by the spectrum of a user-chosen
+excitation pulse (Gaussian, RC step, or modulated Gaussian), and
+inverse-FFTs to the time domain.  Frontend "Transient" tab shows the
+time-domain waveform with excitation overlay, |H(f)| and phase plots,
+plus headline metrics (peak amplitude, peak time, ringdown time to
+-20 dB, and pulse FWHM).  Uses gonum/dsp/fourier for the FFT.
+
+- **Effort:** Medium (shipped)
+
+---
+
+## Polish (interleave throughout)
+
+- **Regression benchmarks** — pin the existing dipole test plus a
+  DL6WU Yagi and a K1FO reference design against published NEC-2
+  numbers.
+- **Coated-wire dielectric loading** — ε_r and shell thickness; a
+  3–5 % resonant-frequency shift on insulated HF wires.
+- **Environmental knobs** — rain / ice as a thin dielectric shell
+  or tan δ bump.
+- **Touchstone (.s1p) and CSV export** of sweep data — *shipped*.
+  CSV: freq / R / X / |Z| / SWR / Γ / RL.  Touchstone v1.1 .s1p
+  RI-format, Hz freq, configurable Z₀.
+- **Convergence reporter** — re-run at 2× segmentation and report
+  the relative change in driving-point impedance.  *Shipped.*
+  Backend `POST /api/convergence` runs the MoM solver at user
+  segments (1×) then at doubled segments (2×), returning impedance,
+  SWR, and gain at both levels plus relative deltas.  Frontend
+  "Convergence" tab shows a colour-coded comparison table, delta bar,
+  and a plain-English verdict (excellent / good / marginal / poor).
+
+---
+
+## Sources
+
+- Conformal MoM advances (AN-SOF):
+  <https://antennasimulator.com/index.php/knowledge-base/overcoming-7-limitations-in-antenna-design-introducing-an-sofs-conformal-method-of-moments/>
+- Higher-order Legendre basis functions (IEEE TAP):
+  <https://ieeexplore.ieee.org/document/1353496/>
+- NEC-4.2 ground models (OSTI): <https://www.osti.gov/biblio/1117909>
+- Characteristic Mode Analysis (Nature Sci. Reports):
+  <https://www.nature.com/articles/s41598-024-66515-x>
+- PSO/GA for antenna optimization:
+  <https://www.sciencedirect.com/science/article/abs/pii/S2214785322008203>

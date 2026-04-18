@@ -517,15 +517,18 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 	wires := make([]mom.Wire, len(req.Wires))
 	for i, w := range req.Wires {
 		wires[i] = mom.Wire{
-			X1:       w.X1,
-			Y1:       w.Y1,
-			Z1:       w.Z1,
-			X2:       w.X2,
-			Y2:       w.Y2,
-			Z2:       w.Z2,
-			Radius:   w.Radius,
-			Segments: w.Segments,
-			Material: mom.MaterialName(w.Material),
+			X1:                  w.X1,
+			Y1:                  w.Y1,
+			Z1:                  w.Z1,
+			X2:                  w.X2,
+			Y2:                  w.Y2,
+			Z2:                  w.Z2,
+			Radius:              w.Radius,
+			Segments:            w.Segments,
+			Material:            mom.MaterialName(w.Material),
+			CoatingPermittivity: w.CoatingPermittivity,
+			CoatingThickness:    w.CoatingThickness,
+			CoatingLossTangent:  w.CoatingLossTangent,
 		}
 	}
 

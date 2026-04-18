@@ -85,9 +85,12 @@ type Wire struct {
 	X2       float64      `json:"x2"`                 // end X coordinate (m)
 	Y2       float64      `json:"y2"`                 // end Y coordinate (m)
 	Z2       float64      `json:"z2"`                 // end Z coordinate (m)
-	Radius   float64      `json:"radius"`             // wire radius (m)
-	Segments int          `json:"segments"`           // number of MoM segments for this wire
-	Material MaterialName `json:"material,omitempty"` // optional conductor material; "" = perfect conductor
+	Radius               float64      `json:"radius"`                          // wire radius (m)
+	Segments             int          `json:"segments"`                        // number of MoM segments for this wire
+	Material             MaterialName `json:"material,omitempty"`              // optional conductor material; "" = perfect conductor
+	CoatingPermittivity  float64      `json:"coating_permittivity,omitempty"`  // relative permittivity εr of dielectric shell (≥1); 0 = no coating
+	CoatingThickness     float64      `json:"coating_thickness,omitempty"`     // dielectric shell thickness (m); 0 = no coating
+	CoatingLossTangent   float64      `json:"coating_loss_tangent,omitempty"`  // dielectric loss tangent tan δ (≥0); 0 = lossless
 }
 
 // GroundConfig describes the ground plane configuration.

@@ -79,6 +79,16 @@ type WireDTO struct {
 	// Material name from mom.MaterialLibrary (e.g. "copper", "aluminum").
 	// Empty / omitted = perfect conductor (lossless).
 	Material string `json:"material,omitempty"`
+	// CoatingPermittivity is the relative permittivity εr of a dielectric
+	// shell around the wire (e.g. 2.3 for PTFE).  Must be ≥ 1 when coating
+	// is active.  Zero / omitted = no coating.
+	CoatingPermittivity float64 `json:"coating_permittivity,omitempty"`
+	// CoatingThickness is the shell wall thickness in meters.  Zero / omitted
+	// = no coating.  Must satisfy thickness < wire radius (thin-shell approx).
+	CoatingThickness float64 `json:"coating_thickness,omitempty"`
+	// CoatingLossTangent is the dielectric loss tangent tan δ (≥ 0).
+	// Zero / omitted = lossless coating.
+	CoatingLossTangent float64 `json:"coating_loss_tangent,omitempty"`
 }
 
 // GroundDTO describes the ground plane configuration.
@@ -283,6 +293,21 @@ func (r *SimulateRequest) Validate() error {
 		if w.Radius > segLen/2 {
 			return fmt.Errorf("wire %d: radius (%e m) too large relative to segment length (%e m); thin-wire approximation requires radius << segment length",
 				i, w.Radius, segLen)
+		}
+		// Validate dielectric coating parameters.
+		if w.CoatingThickness > 0 || w.CoatingPermittivity > 0 {
+			if w.CoatingPermittivity < 1 {
+				return fmt.Errorf("wire %d: coating_permittivity must be ≥ 1 (got %g)", i, w.CoatingPermittivity)
+			}
+			if w.CoatingThickness <= 0 {
+				return fmt.Errorf("wire %d: coating_thickness must be > 0 when coating_permittivity is set", i)
+			}
+			if w.CoatingThickness >= w.Radius {
+				return fmt.Errorf("wire %d: coating_thickness (%e m) must be less than wire radius (%e m)", i, w.CoatingThickness, w.Radius)
+			}
+			if w.CoatingLossTangent < 0 {
+				return fmt.Errorf("wire %d: coating_loss_tangent must be ≥ 0 (got %g)", i, w.CoatingLossTangent)
+			}
 		}
 	}
 

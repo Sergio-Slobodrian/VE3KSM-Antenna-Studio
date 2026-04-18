@@ -9,16 +9,6 @@
 // source excitation, frequency sweeps, and far-field radiation pattern computation.
 package mom
 
-// EnvLayer describes a uniform dielectric film applied to all wires, modelling
-// environmental effects such as rain, ice, or wet snow.  It uses the same
-// NEC-2 IS-card cylindrical-shell model as per-wire CoatingPermittivity.
-// When Thickness == 0 or Permittivity < 1 the layer is a no-op.
-type EnvLayer struct {
-	Permittivity float64 `json:"permittivity"` // relative εr (≥1); 0 = disabled
-	Thickness    float64 `json:"thickness"`    // shell wall thickness (m)
-	LossTangent  float64 `json:"loss_tangent"` // tan δ (≥0); 0 = lossless
-}
-
 // SimulationInput holds the full input for a single-frequency MoM simulation run.
 // It describes the antenna geometry (wires), operating frequency, ground plane
 // configuration, and excitation source.
@@ -28,7 +18,6 @@ type SimulationInput struct {
 	Ground    GroundConfig `json:"ground"`
 	Source    Source       `json:"source"`
 	Loads     []Load       `json:"loads,omitempty"` // optional lumped R/L/C loads
-	EnvLayer  EnvLayer     `json:"env_layer,omitempty"` // global environmental film (rain/ice)
 	// skipBandgapRetry suppresses the negative-R self-diagnosis
 	// recursion in Simulate.  Set internally on perturbed probes.
 	skipBandgapRetry bool `json:"-"`
@@ -96,12 +85,13 @@ type Wire struct {
 	X2       float64      `json:"x2"`                 // end X coordinate (m)
 	Y2       float64      `json:"y2"`                 // end Y coordinate (m)
 	Z2       float64      `json:"z2"`                 // end Z coordinate (m)
-	Radius               float64      `json:"radius"`                          // wire radius (m)
-	Segments             int          `json:"segments"`                        // number of MoM segments for this wire
-	Material             MaterialName `json:"material,omitempty"`              // optional conductor material; "" = perfect conductor
-	CoatingPermittivity  float64      `json:"coating_permittivity,omitempty"`  // relative permittivity εr of dielectric shell (≥1); 0 = no coating
-	CoatingThickness     float64      `json:"coating_thickness,omitempty"`     // dielectric shell thickness (m); 0 = no coating
-	CoatingLossTangent   float64      `json:"coating_loss_tangent,omitempty"`  // dielectric loss tangent tan δ (≥0); 0 = lossless
+	Radius   float64      `json:"radius"`             // wire radius (m)
+	Segments int          `json:"segments"`           // number of MoM segments for this wire
+	Material MaterialName `json:"material,omitempty"` // optional conductor material; "" = perfect conductor
+	// Dielectric coating (IS-card model). Zero thickness or EpsR ≤ 1 = bare wire.
+	CoatingThickness float64 `json:"coating_thickness,omitempty"` // coating outer shell thickness (m)
+	CoatingEpsR      float64 `json:"coating_eps_r,omitempty"`     // coating relative permittivity (εr)
+	CoatingLossTan   float64 `json:"coating_loss_tan,omitempty"`  // coating loss tangent (tanδ)
 }
 
 // GroundConfig describes the ground plane configuration.

@@ -17,57 +17,6 @@ export type Material =
   | 'silver'
   | 'gold';
 
-/** A dielectric coating preset: label shown in the dropdown and εr value. */
-export interface CoatingPreset {
-  label: string;
-  er: number;
-}
-
-/**
- * Common wire coating materials with their relative permittivity εr.
- * The first entry ("None") has er=0, meaning no coating.
- * The last entry ("Custom") has er=-1 as a sentinel; selecting it leaves εr unchanged.
- */
-export const COATING_PRESETS: CoatingPreset[] = [
-  { label: 'None',          er: 0   },
-  { label: 'PTFE (Teflon)', er: 2.1 },
-  { label: 'PE',            er: 2.3 },
-  { label: 'XLPE',          er: 2.3 },
-  { label: 'Silicone',      er: 2.9 },
-  { label: 'PVC',           er: 3.5 },
-  { label: 'Kapton',        er: 3.5 },
-  { label: 'Nylon',         er: 3.5 },
-  { label: 'Custom',        er: -1  },
-];
-
-/** One environmental-film preset (rain, ice, snow, etc.). */
-export interface EnvPreset {
-  label: string;
-  permittivity: number; // εr; 0 = no film
-  thickness: number;    // meters; 0 = no film
-  lossTangent: number;
-}
-
-/** Common environmental film presets for the EnvironmentConfig panel.
- *  "None" has all zeros (no-op).  "Custom" has -1 sentinels — selecting it
- *  leaves the editable fields at whatever the user had. */
-export const ENV_PRESETS: EnvPreset[] = [
-  { label: 'None',       permittivity:  0,   thickness: 0,      lossTangent: 0     },
-  { label: 'Light Rain', permittivity: 80,   thickness: 0.0002, lossTangent: 0.20  },
-  { label: 'Heavy Rain', permittivity: 80,   thickness: 0.0005, lossTangent: 0.30  },
-  { label: 'Wet Snow',   permittivity: 20,   thickness: 0.002,  lossTangent: 0.10  },
-  { label: 'Light Ice',  permittivity:  3.2, thickness: 0.001,  lossTangent: 0.005 },
-  { label: 'Heavy Ice',  permittivity:  3.2, thickness: 0.005,  lossTangent: 0.010 },
-  { label: 'Custom',     permittivity: -1,   thickness: -1,     lossTangent: -1    },
-];
-
-/** Global environmental dielectric film applied uniformly to all wires. */
-export interface EnvLayer {
-  permittivity: number; // εr ≥ 1; 0 = disabled
-  thickness: number;    // meters
-  lossTangent: number;  // tan δ ≥ 0; 0 = lossless
-}
-
 /** Human-friendly labels for the material dropdown. */
 export const MATERIAL_LABELS: Record<Material, string> = {
   '': 'Perfect (lossless)',
@@ -84,7 +33,6 @@ export const MATERIAL_LABELS: Record<Material, string> = {
  *  Endpoints (x1,y1,z1)-(x2,y2,z2) are in meters, physics Z-up frame.
  *  `radius` is wire radius in meters; `segments` is the MoM discretisation count.
  *  `material` selects the conductor for skin-effect loss; '' = perfect conductor.
- *  `coatingPermittivity` / `coatingThickness` describe an optional dielectric sheath.
  */
 export interface Wire {
   id: string;
@@ -97,9 +45,10 @@ export interface Wire {
   radius: number;
   segments: number;
   material: Material;
-  coatingPermittivity: number;
-  coatingThickness: number;
-  coatingLossTangent: number;
+  /** Dielectric coating (IS-card model). Zero or omitted = bare wire. */
+  coatingThickness: number; // outer shell thickness (m); 0 = bare
+  coatingEpsR: number;      // relative permittivity εr; ≤1 = bare
+  coatingLossTan: number;   // loss tangent tanδ
 }
 
 /** Voltage source placement: which wire and segment to excite, plus voltage magnitude. */
@@ -418,6 +367,31 @@ export interface ParetoResult {
   generations: number;
   objectives: string[];
 }
+
+/** A standard wire-coating preset with typical dielectric properties. */
+export interface CoatingPreset {
+  key: string;
+  label: string;
+  thickness: number; // meters
+  epsR: number;
+  lossTan: number;
+}
+
+/** Standard coating presets keyed by material. Thickness is a typical value;
+ *  users can edit the fields after applying a preset. */
+export const COATING_PRESETS: CoatingPreset[] = [
+  { key: 'bare',   label: 'Bare wire',       thickness: 0,       epsR: 1.0,  lossTan: 0      },
+  { key: 'pvc',    label: 'PVC',             thickness: 0.0015,  epsR: 3.8,  lossTan: 0.05   },
+  { key: 'pe',     label: 'PE',              thickness: 0.002,   epsR: 2.3,  lossTan: 0.0002  },
+  { key: 'ptfe',   label: 'PTFE (Teflon)',   thickness: 0.001,   epsR: 2.1,  lossTan: 0.0002  },
+  { key: 'fep',    label: 'FEP',             thickness: 0.001,   epsR: 2.1,  lossTan: 0.0003  },
+  { key: 'xlpe',   label: 'XLPE',            thickness: 0.002,   epsR: 2.3,  lossTan: 0.0003  },
+  { key: 'nylon',  label: 'Nylon (PA)',       thickness: 0.001,   epsR: 3.5,  lossTan: 0.04   },
+  { key: 'rubber', label: 'Rubber (EPDM)',    thickness: 0.002,   epsR: 3.0,  lossTan: 0.02   },
+  { key: 'enamel', label: 'Enamel/varnish',   thickness: 0.00008, epsR: 3.5,  lossTan: 0.04   },
+  { key: 'ice',    label: 'Ice (weather)',    thickness: 0.001,   epsR: 3.17, lossTan: 0.002   },
+  { key: 'water',  label: 'Water film (wet)', thickness: 0.0001,  epsR: 80.0, lossTan: 0.2    },
+];
 
 /** Supported display units for the UI; internal storage is always meters. */
 export type DisplayUnit = 'meters' | 'feet' | 'inches' | 'cm' | 'mm';

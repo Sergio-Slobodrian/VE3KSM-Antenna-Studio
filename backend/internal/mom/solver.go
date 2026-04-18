@@ -50,9 +50,6 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		// Assign global indices (SubdivideWire uses local 0-based indices)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
-			segs[j].CoatingPermittivity = w.CoatingPermittivity
-			segs[j].CoatingThickness = w.CoatingThickness
-			segs[j].CoatingLossTangent = w.CoatingLossTangent
 		}
 		allSegments = append(allSegments, segs...)
 	}
@@ -218,14 +215,11 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		return nil, fmt.Errorf("applying material loss: %w", err)
 	}
 
-	// Step 5e: Apply distributed series reactance for dielectric-coated wires.
-	applyCoating(Z, input.Wires, omega, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
-	// Step 5f: Apply global environmental film (rain/ice/snow) over all wires.
-	applyEnvLayer(Z, input.EnvLayer, omega, input.Wires, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
+	// Step 5d2: Apply dielectric coating impedance (IS-card model).
+	applyCoatingLoading(cdenseAdder{Z: Z}, input.Wires, allSegments,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, omega, lossPerBasis)
 
-	// Step 5g: Stamp transmission-line elements (NEC TL cards).  Two-port
+	// Step 5e: Stamp transmission-line elements (NEC TL cards).  Two-port
 	// TLs add to four Z-matrix entries; stubs collapse to a single
 	// diagonal stamp.  Resistive parts of Z11/Z22 feed the loss budget.
 	if len(input.TransmissionLines) > 0 {
@@ -431,9 +425,6 @@ func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFiel
 		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
-			segs[j].CoatingPermittivity = w.CoatingPermittivity
-			segs[j].CoatingThickness = w.CoatingThickness
-			segs[j].CoatingLossTangent = w.CoatingLossTangent
 		}
 		allSegments = append(allSegments, segs...)
 	}
@@ -521,12 +512,9 @@ func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFiel
 		return nil, fmt.Errorf("applying material loss: %w", err)
 	}
 
-	// Dielectric coating
-	applyCoating(Z, input.Wires, omega, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
-	// Environmental film
-	applyEnvLayer(Z, input.EnvLayer, omega, input.Wires, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
+	// Dielectric coating (IS-card model)
+	applyCoatingLoading(cdenseAdder{Z: Z}, input.Wires, allSegments,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, omega, lossPerBasis)
 
 	// Transmission lines
 	if len(input.TransmissionLines) > 0 {

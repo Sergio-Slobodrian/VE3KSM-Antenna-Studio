@@ -27,7 +27,6 @@ import type {
   ParetoObjective,
   TransientResult,
   ConvergenceResult,
-  EnvLayer,
 } from '@/types';
 
 /** Full shape of the Zustand store: state fields + action methods. */
@@ -73,9 +72,6 @@ interface AntennaState {
   /** Cached convergence check result. */
   convergenceResult: ConvergenceResult | null;
 
-  /** Global environmental film (rain/ice/snow) applied to all wires. */
-  envLayer: EnvLayer;
-
   setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
@@ -106,7 +102,6 @@ interface AntennaState {
   setParetoObjectives: (objs: ParetoObjective[]) => void;
   setTransientResult: (result: TransientResult | null) => void;
   setConvergenceResult: (result: ConvergenceResult | null) => void;
-  setEnvLayer: (layer: Partial<EnvLayer>) => void;
 }
 
 const defaultWireId = uuidv4();
@@ -130,6 +125,9 @@ export const useAntennaStore = create<AntennaState>((set) => ({
       radius: 0.001,
       segments: 21,
       material: '',
+      coatingThickness: 0,
+      coatingEpsR: 2.3,
+      coatingLossTan: 0,
     },
   ],
   source: {
@@ -175,7 +173,6 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   ],
   transientResult: null,
   convergenceResult: null,
-  envLayer: { permittivity: 0, thickness: 0, lossTangent: 0 },
 
   // --- Actions ---
 
@@ -195,9 +192,9 @@ export const useAntennaStore = create<AntennaState>((set) => ({
           radius: 0.001,
           segments: 11,
           material: '',
-          coatingPermittivity: 0,
           coatingThickness: 0,
-          coatingLossTangent: 0,
+          coatingEpsR: 2.3,
+          coatingLossTan: 0,
           ...wire,
         },
       ],
@@ -263,7 +260,13 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   /** Replace the entire antenna model with a backend-generated template. Clears results. */
   loadTemplate: (data) =>
     set({
-      wires: data.wires.map((w) => ({ ...w, material: w.material ?? '' })),
+      wires: data.wires.map((w) => ({
+        ...w,
+        material: w.material ?? '',
+        coatingThickness: w.coatingThickness ?? 0,
+        coatingEpsR: w.coatingEpsR ?? 2.3,
+        coatingLossTan: w.coatingLossTan ?? 0,
+      })),
       source: data.source,
       ground: data.ground,
       loads: [],
@@ -302,5 +305,4 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   setParetoObjectives: (objs) => set({ paretoObjectives: objs }),
   setTransientResult: (result) => set({ transientResult: result }),
   setConvergenceResult: (result) => set({ convergenceResult: result }),
-  setEnvLayer: (layer) => set((s) => ({ envLayer: { ...s.envLayer, ...layer } })),
 }));

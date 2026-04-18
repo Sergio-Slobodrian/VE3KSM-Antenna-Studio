@@ -38,7 +38,6 @@ const Header: React.FC = () => {
     ground,
     frequency,
     referenceImpedance,
-    envLayer,
     isSimulating,
     setSimulationResult,
     setSweepResult,
@@ -64,7 +63,7 @@ const Header: React.FC = () => {
     setSimulating(true);
     setError(null);
     try {
-      const request = buildSimulateRequest(wires, source, loads, transmissionLines, ground, frequency, referenceImpedance, envLayer);
+      const request = buildSimulateRequest(wires, source, loads, transmissionLines, ground, frequency, referenceImpedance);
       const result = await simulate(request);
       setSimulationResult(result);
     } catch (err) {
@@ -89,7 +88,7 @@ const Header: React.FC = () => {
     setSimulating(true);
     setError(null);
     try {
-      const request = buildSweepRequest(wires, source, loads, transmissionLines, ground, frequency, referenceImpedance, envLayer);
+      const request = buildSweepRequest(wires, source, loads, transmissionLines, ground, frequency, referenceImpedance);
       const result = await sweep(request);
       setSweepResult(result);
     } catch (err) {

@@ -119,7 +119,9 @@ All 17 numbered roadmap items are shipped. See `ROADMAP.md` for details. Additio
 
 From `ROADMAP.md`, still to do:
 
-1. **Regression benchmarks** — pin DL6WU Yagi + K1FO design against published NEC-2 numbers.
+1. **Coated-wire dielectric loading** — εr shell + thickness for insulated wires; 3–5% resonant frequency shift. **This is the next planned feature.**
+2. **Regression benchmarks** — pin DL6WU Yagi + K1FO design against published NEC-2 numbers.
+3. **Environmental knobs** — rain/ice as dielectric shell or tan δ bump.
 
 ## Recent Session Work (This Chat)
 
@@ -134,46 +136,10 @@ New feature: `POST /api/convergence` runs MoM at user segments (1x) and doubled 
 **Files created:** `mom/convergence.go`, `ConvergenceViewer.tsx`
 **Files changed:** `handlers.go`, `main.go` (route), `request.go` (no new DTO needed — reuses SimulateRequest), `types/index.ts` (ConvergenceResult), `client.ts` (checkConvergence), `MainLayout.tsx` (new tab), `antennaStore.ts` (convergenceResult slot)
 
-### 3. Coated-wire dielectric loading
-NEC-2 IS-card model: cylindrical dielectric shell on any wire adds distributed series impedance per unit length to the Z-matrix diagonal. Complex permittivity `ε = ε₀·εr·(1 − j·tanδ)` gives:
-
-```
-Z'_coat = ln(b/a) / (2π · ω · ε₀ · εr · (tanδ + j))   [Ω/m]
-```
-
-Applied as half-segment averaging over each triangle basis (same convention as `applyMaterialLoss`). Resistive component (tanδ > 0) feeds `lossPerBasis` for efficiency accounting.
-
-**UI:** Wire table gains four new columns: Coating (preset dropdown: None/PTFE/PE/XLPE/Silicone/PVC/Kapton/Nylon/Custom), εr (editable number), Coat t (thickness, unit-converted), tan δ (loss tangent).
-
-**Files created:** none
-**Files changed:** `mom/types.go` (Wire + CoatingLossTangent), `mom/segment.go` (Segment), `mom/load.go` (applyCoating()), `mom/solver.go` (2× propagation + call), `mom/cma.go` (propagation + call), `api/request.go` (WireDTO + validation), `api/handlers.go` (mapping), `types/index.ts` (Wire + COATING_PRESETS), `store/antennaStore.ts` (defaults), `api/client.ts` (buildWires), `components/input/WireRow.tsx`, `components/input/WireTable.tsx`
-
-### 4. Zoomable transient charts with CSV export
-
+### 3. Zoomable transient charts with CSV export
 Upgraded TransientViewer charts: clicking any chart opens a large modal overlay (900x480) with proper axis ticks (niceTicks algorithm), dim grid lines, chart title, and an "Export CSV" button. Escape or click-outside to dismiss.
 
 **Files changed:** `TransientViewer.tsx` — replaced simple `LineChart` with `DetailChart` + `ClickableChart` + `ZoomModal` components. Added `niceTicks()`, `formatTickLabel()`, `exportCsv()` helpers.
-
-### 5. Environmental knobs (rain/ice/snow)
-
-New `EnvironmentConfig` panel (between Ground and Frequency in the left panel) applies a uniform dielectric film to all wires — same NEC-2 IS-card physics as per-wire coating but global. Preset dropdown with sensible defaults, all three values editable.
-
-**Presets:** None / Light Rain (εr=80, 0.2mm, tanδ=0.20) / Heavy Rain (εr=80, 0.5mm, tanδ=0.30) / Wet Snow (εr=20, 2mm, tanδ=0.10) / Light Ice (εr=3.2, 1mm, tanδ=0.005) / Heavy Ice (εr=3.2, 5mm, tanδ=0.010) / Custom.
-
-**Backend formula** (same as per-wire coating):
-```
-Z'_env = ln(b/a) / (2π · ω · ε₀ · εr · (tanδ + j))   [Ω/m]
-```
-Applied after `applyCoating` in both triangle-basis and higher-order-basis paths; also in CMA.
-
-**Files created:** `components/input/EnvironmentConfig.tsx`
-**Files changed:** `mom/types.go` (EnvLayer struct + SimulationInput field), `mom/load.go` (applyEnvLayer()), `mom/solver.go` (2 call sites), `mom/cma.go` (1 call site), `api/request.go` (EnvLayerDTO + SimulateRequest + SweepRequest + ToSimulateRequest + Validate), `api/handlers.go` (simulateRequestToInput mapping), `types/index.ts` (EnvLayer, EnvPreset, ENV_PRESETS), `store/antennaStore.ts` (envLayer state + setEnvLayer), `api/client.ts` (buildEnvLayer + all API functions), `MainLayout.tsx` (added component), `Header.tsx` (pass envLayer to simulate/sweep), `CMAViewer.tsx`, `NearFieldViewer.tsx`, `OptimizerViewer.tsx`, `ParetoViewer.tsx`, `TransientViewer.tsx`, `ConvergenceViewer.tsx` (all pass envLayer).
-
-### 6. Tab bar wrapping on narrow windows
-
-Added `flex-wrap: wrap` to `.tab-bar` so all 16 tabs remain accessible when the right panel is too narrow — they flow onto a second row instead of scrolling off-screen.
-
-**Files changed:** `frontend/src/index.css`
 
 ## Known Recurring Issues
 

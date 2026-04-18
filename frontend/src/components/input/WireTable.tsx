@@ -47,10 +47,10 @@ const WireTable: React.FC = () => {
               <th>Radius ({unitLabel})</th>
               <th>Segs</th>
               <th>Material</th>
-              <th>Coating</th>
+              <th>Coating Preset</th>
+              <th>Coat-t ({unitLabel})</th>
               <th>εr</th>
-              <th>Coat t ({unitLabel})</th>
-              <th>tan δ</th>
+              <th>tanδ</th>
               <th></th>
             </tr>
           </thead>

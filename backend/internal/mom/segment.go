@@ -12,12 +12,9 @@ type Segment struct {
 	Center     [3]float64 // midpoint of the segment (m) — used as the collocation point
 	Start      [3]float64 // start endpoint of the segment (m)
 	End        [3]float64 // end endpoint of the segment (m)
-	HalfLength          float64    // half the segment length (m), i.e. Δl/2
-	Direction           [3]float64 // unit vector along the segment from Start to End
-	Radius              float64    // wire cross-section radius (m) — used in the thin-wire kernel
-	CoatingPermittivity float64    // relative permittivity εr of dielectric shell; 0 = no coating
-	CoatingThickness    float64    // dielectric shell thickness (m); 0 = no coating
-	CoatingLossTangent  float64    // dielectric loss tangent tan δ; 0 = lossless
+	HalfLength float64    // half the segment length (m), i.e. Δl/2
+	Direction  [3]float64 // unit vector along the segment from Start to End
+	Radius     float64    // wire cross-section radius (m) — used in the thin-wire kernel
 }
 
 // SubdivideWire divides a straight wire into numSegments equal-length segments.

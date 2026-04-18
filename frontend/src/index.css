@@ -246,7 +246,6 @@ body {
 /* ========== Tabs ========== */
 .tab-bar {
   display: flex;
-  flex-wrap: wrap;
   background: var(--bg-secondary);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -493,6 +492,10 @@ select {
   text-align: center;
   padding: 2px 3px !important;
   font-size: 11px !important;
+}
+
+.wire-input-inactive {
+  opacity: 0.35;
 }
 
 /* ========== Template Selector ========== */

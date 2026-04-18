@@ -236,9 +236,6 @@ func SimulateCMA(input SimulationInput) (*CMAResult, error) {
 		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
-			segs[j].CoatingPermittivity = w.CoatingPermittivity
-			segs[j].CoatingThickness = w.CoatingThickness
-			segs[j].CoatingLossTangent = w.CoatingLossTangent
 		}
 		allSegments = append(allSegments, segs...)
 	}
@@ -322,10 +319,6 @@ func SimulateCMA(input SimulationInput) (*CMAResult, error) {
 		wireSegOffsets, wireSegCounts, wireBasisOffsets, freq, lossPerBasis); err != nil {
 		return nil, fmt.Errorf("applying material loss: %w", err)
 	}
-	applyCoating(Z, input.Wires, omega, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
-	applyEnvLayer(Z, input.EnvLayer, omega, input.Wires, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
 	if len(input.TransmissionLines) > 0 {
 		if err := applyTransmissionLines(Z, input.TransmissionLines, omega,
 			input.Wires, wireSegCounts, wireBasisOffsets, lossPerBasis); err != nil {

@@ -9,15 +9,6 @@ import (
 	"antenna-studio/backend/internal/mom"
 )
 
-// EnvLayerDTO describes a global environmental dielectric film applied to all
-// wires (e.g. rain water, ice, wet snow).  Uses the same NEC-2 IS-card model
-// as per-wire CoatingPermittivity.  Zero Thickness or Permittivity < 1 = no-op.
-type EnvLayerDTO struct {
-	Permittivity float64 `json:"permittivity,omitempty"`
-	Thickness    float64 `json:"thickness,omitempty"`    // meters
-	LossTangent  float64 `json:"loss_tangent,omitempty"` // tan δ (≥0)
-}
-
 // SimulateRequest is the JSON body the frontend sends to POST /api/simulate.
 // It describes a complete single-frequency MoM simulation: antenna geometry
 // (wires), operating frequency, ground environment, and excitation source.
@@ -34,9 +25,7 @@ type SimulateRequest struct {
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
 	// BasisOrder selects the current expansion: "" or "triangle" (default),
 	// "sinusoidal" (King-type), or "quadratic" (Hermite).
-	BasisOrder string      `json:"basis_order,omitempty"`
-	// EnvLayer describes a global environmental dielectric film (rain/ice/snow).
-	EnvLayer   EnvLayerDTO `json:"env_layer,omitempty"`
+	BasisOrder string `json:"basis_order,omitempty"`
 }
 
 // LoadDTO describes a lumped R/L/C load attached to a single segment.
@@ -90,16 +79,10 @@ type WireDTO struct {
 	// Material name from mom.MaterialLibrary (e.g. "copper", "aluminum").
 	// Empty / omitted = perfect conductor (lossless).
 	Material string `json:"material,omitempty"`
-	// CoatingPermittivity is the relative permittivity εr of a dielectric
-	// shell around the wire (e.g. 2.3 for PTFE).  Must be ≥ 1 when coating
-	// is active.  Zero / omitted = no coating.
-	CoatingPermittivity float64 `json:"coating_permittivity,omitempty"`
-	// CoatingThickness is the shell wall thickness in meters.  Zero / omitted
-	// = no coating.  Must satisfy thickness < wire radius (thin-shell approx).
+	// Dielectric coating (IS-card model). Zero thickness or EpsR ≤ 1 = bare wire.
 	CoatingThickness float64 `json:"coating_thickness,omitempty"`
-	// CoatingLossTangent is the dielectric loss tangent tan δ (≥ 0).
-	// Zero / omitted = lossless coating.
-	CoatingLossTangent float64 `json:"coating_loss_tangent,omitempty"`
+	CoatingEpsR      float64 `json:"coating_eps_r,omitempty"`
+	CoatingLossTan   float64 `json:"coating_loss_tan,omitempty"`
 }
 
 // GroundDTO describes the ground plane configuration.
@@ -144,9 +127,7 @@ type SweepRequest struct {
 	// ReferenceImpedance (Ω) for VSWR.  Zero or omitted → 50 Ω.
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
 	// BasisOrder for the sweep — forwarded to each Simulate() call.
-	BasisOrder string      `json:"basis_order,omitempty"`
-	// EnvLayer describes a global environmental dielectric film (rain/ice/snow).
-	EnvLayer   EnvLayerDTO `json:"env_layer,omitempty"`
+	BasisOrder string `json:"basis_order,omitempty"`
 }
 
 // ToSimulateRequest converts a SweepRequest into a SimulateRequest using
@@ -162,7 +143,6 @@ func (s *SweepRequest) ToSimulateRequest() SimulateRequest {
 		TransmissionLines:  s.TransmissionLines,
 		ReferenceImpedance: s.ReferenceImpedance,
 		BasisOrder:         s.BasisOrder,
-		EnvLayer:           s.EnvLayer,
 	}
 }
 
@@ -308,21 +288,6 @@ func (r *SimulateRequest) Validate() error {
 			return fmt.Errorf("wire %d: radius (%e m) too large relative to segment length (%e m); thin-wire approximation requires radius << segment length",
 				i, w.Radius, segLen)
 		}
-		// Validate dielectric coating parameters.
-		if w.CoatingThickness > 0 || w.CoatingPermittivity > 0 {
-			if w.CoatingPermittivity < 1 {
-				return fmt.Errorf("wire %d: coating_permittivity must be ≥ 1 (got %g)", i, w.CoatingPermittivity)
-			}
-			if w.CoatingThickness <= 0 {
-				return fmt.Errorf("wire %d: coating_thickness must be > 0 when coating_permittivity is set", i)
-			}
-			if w.CoatingThickness >= w.Radius {
-				return fmt.Errorf("wire %d: coating_thickness (%e m) must be less than wire radius (%e m)", i, w.CoatingThickness, w.Radius)
-			}
-			if w.CoatingLossTangent < 0 {
-				return fmt.Errorf("wire %d: coating_loss_tangent must be ≥ 0 (got %g)", i, w.CoatingLossTangent)
-			}
-		}
 	}
 
 	// Normalize empty ground type to the default free-space environment
@@ -387,20 +352,6 @@ func (r *SimulateRequest) Validate() error {
 
 	if r.ReferenceImpedance < 0 {
 		return fmt.Errorf("reference_impedance must be non-negative, got %f", r.ReferenceImpedance)
-	}
-
-	// Validate environmental film when active.
-	el := r.EnvLayer
-	if el.Thickness > 0 || el.Permittivity > 0 {
-		if el.Permittivity < 1 {
-			return fmt.Errorf("env_layer.permittivity must be ≥ 1 (got %g)", el.Permittivity)
-		}
-		if el.Thickness <= 0 {
-			return fmt.Errorf("env_layer.thickness must be > 0 when permittivity is set")
-		}
-		if el.LossTangent < 0 {
-			return fmt.Errorf("env_layer.loss_tangent must be ≥ 0 (got %g)", el.LossTangent)
-		}
 	}
 
 	// Transmission lines: A must point at a real wire/segment; B may be

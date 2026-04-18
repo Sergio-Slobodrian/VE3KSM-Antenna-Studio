@@ -1107,6 +1107,38 @@ select {
   height: 14px;
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
+.region-io-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.region-io-row button {
+  flex: 1 1 auto;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.region-io-row button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.region-io-row button:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.region-import-error {
+  margin: 0 0 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  color: #ffb3b3;
+  background: rgba(255, 80, 80, 0.12);
+  border: 1px solid rgba(255, 80, 80, 0.35);
+  border-radius: 2px;
+}
 .region-user-list {
   list-style: none;
   padding: 0;

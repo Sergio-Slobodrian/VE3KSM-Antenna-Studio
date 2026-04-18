@@ -68,3 +68,108 @@ export function deleteUserRegion(id: string): GroundRegion[] {
   saveUserRegions(list);
   return list;
 }
+
+// --- JSON export / import ----------------------------------------------------
+
+const EXPORT_KIND = 'user-regions';
+const EXPORT_APP = 've3ksm-antenna-studio';
+
+interface ExportFile {
+  app: string;
+  kind: string;
+  version: number;
+  exportedAt: string;
+  regions: GroundRegion[];
+}
+
+/** Serialise the given user regions to a pretty-printed JSON string with the
+ *  wrapper schema (app, kind, version, exportedAt). The returned text is ready
+ *  for a Blob download. */
+export function exportUserRegions(regions: GroundRegion[]): string {
+  const payload: ExportFile = {
+    app: EXPORT_APP,
+    kind: EXPORT_KIND,
+    version: SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    regions: regions.filter((r) => r.source === 'user'),
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+/** Result of a parse attempt: either a list of valid regions plus a count of
+ *  skipped bad features, or an error string. */
+export type ImportParseResult =
+  | { ok: true; regions: GroundRegion[]; skipped: number }
+  | { ok: false; error: string };
+
+function isValidRing(poly: unknown): poly is [number, number][] {
+  if (!Array.isArray(poly) || poly.length < 3) return false;
+  for (const v of poly) {
+    if (!Array.isArray(v) || v.length !== 2) return false;
+    const [lon, lat] = v as unknown[];
+    if (typeof lon !== 'number' || typeof lat !== 'number') return false;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return false;
+  }
+  return true;
+}
+
+/** Parse and validate an imported JSON file. Never throws; returns a tagged
+ *  result so callers can branch on success. Skips individual malformed
+ *  features but aborts on schema mismatches (wrong app/kind/version). */
+export function parseUserRegionImport(text: string): ImportParseResult {
+  let obj: unknown;
+  try {
+    obj = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, error: `Invalid JSON: ${(err as Error).message}` };
+  }
+  if (!obj || typeof obj !== 'object') {
+    return { ok: false, error: 'File is not a JSON object' };
+  }
+  const p = obj as Partial<ExportFile>;
+  if (p.kind !== EXPORT_KIND) {
+    return { ok: false, error: `Wrong file kind: expected "${EXPORT_KIND}", got "${p.kind ?? '(missing)'}"` };
+  }
+  if (p.version !== SCHEMA_VERSION) {
+    return { ok: false, error: `Unsupported schema version ${p.version ?? '(missing)'} (expected ${SCHEMA_VERSION})` };
+  }
+  if (!Array.isArray(p.regions)) {
+    return { ok: false, error: 'Missing "regions" array' };
+  }
+
+  const valid: GroundRegion[] = [];
+  let skipped = 0;
+  for (const raw of p.regions) {
+    if (!raw || typeof raw !== 'object') { skipped++; continue; }
+    const r = raw as Partial<GroundRegion>;
+    if (typeof r.name !== 'string' || !r.name.trim()) { skipped++; continue; }
+    if (typeof r.epsR !== 'number' || !(r.epsR >= 1)) { skipped++; continue; }
+    if (typeof r.sigma !== 'number' || !(r.sigma > 0)) { skipped++; continue; }
+    if (!isValidRing(r.polygon)) { skipped++; continue; }
+    valid.push({
+      id: typeof r.id === 'string' ? r.id : '',
+      name: r.name,
+      source: 'user',
+      polygon: r.polygon,
+      epsR: r.epsR,
+      sigma: r.sigma,
+    });
+  }
+  return { ok: true, regions: valid, skipped };
+}
+
+/** Append a freshly-parsed batch to existing localStorage regions, always
+ *  regenerating IDs so double-imports produce distinct copies. Returns the
+ *  full merged list. */
+export function importUserRegions(
+  incoming: GroundRegion[],
+  makeId: () => string,
+): GroundRegion[] {
+  const existing = loadUserRegions();
+  const merged = [
+    ...existing,
+    ...incoming.map((r) => ({ ...r, id: makeId(), source: 'user' as const })),
+  ];
+  saveUserRegions(merged);
+  return merged;
+}

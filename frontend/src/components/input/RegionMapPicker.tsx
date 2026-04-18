@@ -28,6 +28,9 @@ import {
   addUserRegion,
   deleteUserRegion,
   updateUserRegion,
+  exportUserRegions,
+  parseUserRegionImport,
+  importUserRegions,
 } from '@/utils/regionStorage';
 import ituData from '@/data/itu_r_p832.json';
 
@@ -83,9 +86,12 @@ const RegionMapPicker: React.FC<Props> = ({ open, onClose, onApply }) => {
   const [selected, setSelected] = useState<GroundRegion | null>(null);
   const [pending, setPending] = useState<PendingPolygon | null>(null);
   const [draft, setDraft] = useState<NewRegionDraft | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const panDragRef = useRef<{ x: number; y: number; startPan: { x: number; y: number } } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Reset transient state when modal is closed/reopened.
   useEffect(() => {
@@ -97,6 +103,8 @@ const RegionMapPicker: React.FC<Props> = ({ open, onClose, onApply }) => {
     setSelected(null);
     setPending(null);
     setDraft(null);
+    setImportError(null);
+    setImportStatus(null);
     setUserRegions(loadUserRegions());
   }, [open]);
 
@@ -285,6 +293,59 @@ const RegionMapPicker: React.FC<Props> = ({ open, onClose, onApply }) => {
     onClose();
   }
 
+  function handleExport() {
+    if (userRegions.length === 0) return;
+    const text = exportUserRegions(userRegions);
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const today = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `ve3ksm-regions-${today}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportClick() {
+    setImportError(null);
+    setImportStatus(null);
+    fileInputRef.current?.click();
+  }
+
+  function handleImportChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    // Clear the input so the same file can be re-selected later.
+    if (e.target) e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === 'string' ? reader.result : '';
+      const result = parseUserRegionImport(text);
+      if (!result.ok) {
+        setImportError(result.error);
+        setImportStatus(null);
+        return;
+      }
+      if (result.regions.length === 0) {
+        setImportError(`No valid regions found${result.skipped ? ` (${result.skipped} skipped)` : ''}`);
+        return;
+      }
+      const merged = importUserRegions(result.regions, newId);
+      setUserRegions(merged);
+      setImportError(null);
+      const skippedNote = result.skipped > 0 ? ` · ${result.skipped} skipped` : '';
+      setImportStatus(`Imported ${result.regions.length}${skippedNote} — ${merged.length} total`);
+      // Clear status after a few seconds to return to the normal count.
+      setTimeout(() => setImportStatus(null), 3500);
+    };
+    reader.onerror = () => {
+      setImportError('Could not read the file');
+    };
+    reader.readAsText(file);
+  }
+
   function handleDeleteUser(id: string) {
     setUserRegions(deleteUserRegion(id));
     if (selected && selected.id === id) setSelected(null);
@@ -446,7 +507,34 @@ const RegionMapPicker: React.FC<Props> = ({ open, onClose, onApply }) => {
             </section>
 
             <section>
-              <h4>My regions ({userRegions.length})</h4>
+              <h4>
+                {importStatus
+                  ? importStatus
+                  : `My regions (${userRegions.length})`}
+              </h4>
+              <div className="region-io-row">
+                <button
+                  onClick={handleExport}
+                  disabled={userRegions.length === 0}
+                  title={userRegions.length === 0
+                    ? 'Draw a polygon first to enable export'
+                    : 'Download all user regions as JSON'}
+                >↓ Export</button>
+                <button
+                  onClick={handleImportClick}
+                  title="Merge regions from a previously-exported JSON file"
+                >↑ Import</button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: 'none' }}
+                  onChange={handleImportChange}
+                />
+              </div>
+              {importError && (
+                <p className="region-import-error">{importError}</p>
+              )}
               {userRegions.length === 0
                 ? <p className="muted small">Switch to Draw polygon mode to add refinements.</p>
                 : (

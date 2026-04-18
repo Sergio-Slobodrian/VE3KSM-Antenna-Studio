@@ -1,4 +1,4 @@
-.PHONY: run dev deps build test clean docker-up docker-down sync
+.PHONY: run dev deps build test clean docker-up docker-down sync update-itu-zones
 
 # -----------------------------------------------------------------------------
 # sync: pull changes from the Windows-side copy of this repo into the WSL
@@ -64,3 +64,40 @@ docker-up:
 
 docker-down:
 	docker-compose down
+
+# -----------------------------------------------------------------------------
+# ITU-R P.832 zone data import.
+#
+# Rewrites frontend/src/data/itu_r_p832.json from an external GeoJSON source
+# (ITU atlas conversion, per-region dataset, Natural Earth overlay, ...).
+# Each feature is classified into zone 1-6 by properties.zone (preferred) or
+# properties.sigma (fallback, via canonical σ thresholds).  Polygon rings are
+# simplified with Douglas-Peucker; MultiPolygons are split per outer ring;
+# holes are discarded.
+#
+# Required:  SRC=/path/to/source.geojson
+# Optional:  MERGE=1         append to existing out file (dedup by id)
+#            EPS=0.05        simplification epsilon in degrees (0 = off)
+#
+# Examples:
+#   make update-itu-zones SRC=/tmp/itu-atlas.geojson
+#   make update-itu-zones SRC=/tmp/north-america.geojson MERGE=1
+#   make update-itu-zones SRC=/tmp/source.geojson EPS=0.1
+#   make update-itu-zones SRC=/tmp/hires.geojson EPS=0
+# -----------------------------------------------------------------------------
+SRC ?=
+MERGE ?=
+EPS ?= 0.05
+ITU_OUT := frontend/src/data/itu_r_p832.json
+
+update-itu-zones:
+	@if [ -z "$(SRC)" ]; then \
+		echo "error: SRC=<path/to/source.geojson> is required"; \
+		echo "example: make update-itu-zones SRC=/tmp/itu-atlas.geojson"; \
+		exit 1; \
+	fi
+	cd backend && go run ./cmd/ituimport \
+		-src "$(abspath $(SRC))" \
+		-out "$(abspath $(ITU_OUT))" \
+		-eps "$(EPS)" \
+		$(if $(MERGE),-merge,)

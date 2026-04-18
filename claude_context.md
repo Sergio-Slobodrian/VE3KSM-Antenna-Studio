@@ -150,9 +150,16 @@ Applied as half-segment averaging over each triangle basis (same convention as `
 **Files changed:** `mom/types.go` (Wire + CoatingLossTangent), `mom/segment.go` (Segment), `mom/load.go` (applyCoating()), `mom/solver.go` (2× propagation + call), `mom/cma.go` (propagation + call), `api/request.go` (WireDTO + validation), `api/handlers.go` (mapping), `types/index.ts` (Wire + COATING_PRESETS), `store/antennaStore.ts` (defaults), `api/client.ts` (buildWires), `components/input/WireRow.tsx`, `components/input/WireTable.tsx`
 
 ### 4. Zoomable transient charts with CSV export
+
 Upgraded TransientViewer charts: clicking any chart opens a large modal overlay (900x480) with proper axis ticks (niceTicks algorithm), dim grid lines, chart title, and an "Export CSV" button. Escape or click-outside to dismiss.
 
 **Files changed:** `TransientViewer.tsx` — replaced simple `LineChart` with `DetailChart` + `ClickableChart` + `ZoomModal` components. Added `niceTicks()`, `formatTickLabel()`, `exportCsv()` helpers.
+
+### 5. Tab bar wrapping on narrow windows
+
+Added `flex-wrap: wrap` to `.tab-bar` so all 16 tabs remain accessible when the right panel is too narrow — they flow onto a second row instead of scrolling off-screen.
+
+**Files changed:** `frontend/src/index.css`
 
 ## Known Recurring Issues
 

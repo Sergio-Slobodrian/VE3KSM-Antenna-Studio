@@ -215,9 +215,9 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		return nil, fmt.Errorf("applying material loss: %w", err)
 	}
 
-	// Step 5d2: Apply dielectric coating impedance (IS-card model).
+	// Step 5d2: Apply dielectric coating + weather film (multi-layer IS-card model).
 	applyCoatingLoading(cdenseAdder{Z: Z}, input.Wires, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, omega, lossPerBasis)
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, omega, input.Weather, lossPerBasis)
 
 	// Step 5e: Stamp transmission-line elements (NEC TL cards).  Two-port
 	// TLs add to four Z-matrix entries; stubs collapse to a single
@@ -512,9 +512,9 @@ func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFiel
 		return nil, fmt.Errorf("applying material loss: %w", err)
 	}
 
-	// Dielectric coating (IS-card model)
+	// Dielectric coating + weather film (multi-layer IS-card model)
 	applyCoatingLoading(cdenseAdder{Z: Z}, input.Wires, allSegments,
-		wireSegOffsets, wireSegCounts, wireBasisOffsets, omega, lossPerBasis)
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, omega, input.Weather, lossPerBasis)
 
 	// Transmission lines
 	if len(input.TransmissionLines) > 0 {

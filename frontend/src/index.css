@@ -499,6 +499,44 @@ select {
   opacity: 0.35;
 }
 
+/* ========== Weather / Environment panel ========== */
+.section-title-active {
+  color: var(--accent);
+}
+
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+
+.env-row label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.env-select {
+  font-size: 12px;
+  padding: 3px 6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 3px;
+}
+
+.env-thickness {
+  width: 80px;
+  font-size: 12px;
+  padding: 3px 4px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 3px;
+}
+
 /* ========== Template Selector ========== */
 .template-selector {
   min-width: 150px;

@@ -157,6 +157,7 @@ const CMAViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const weather = useAntennaStore((s) => s.weather);
 
   const result = useAntennaStore((s) => s.cmaResult);
   const setCmaResult = useAntennaStore((s) => s.setCmaResult);
@@ -170,7 +171,7 @@ const CMAViewer: React.FC = () => {
     try {
       const res = await computeCMA(
         wires, source, loads, transmissionLines,
-        ground, frequency, referenceImpedance,
+        ground, frequency, referenceImpedance, weather,
       );
       setCmaResult(res);
       setSelectedMode(1);
@@ -179,7 +180,7 @@ const CMAViewer: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance, setCmaResult]);
+  }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance, weather, setCmaResult]);
 
   const selectedModeData = result?.modes.find((m) => m.index === selectedMode) ?? null;
 

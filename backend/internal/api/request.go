@@ -26,6 +26,16 @@ type SimulateRequest struct {
 	// BasisOrder selects the current expansion: "" or "triangle" (default),
 	// "sinusoidal" (King-type), or "quadratic" (Hermite).
 	BasisOrder string `json:"basis_order,omitempty"`
+	// Weather applies a global environmental film on every wire.
+	Weather WeatherDTO `json:"weather,omitempty"`
+}
+
+// WeatherDTO carries the weather preset and film thickness from the frontend.
+type WeatherDTO struct {
+	Preset    string  `json:"preset"`    // "dry", "rain", "ice", "wet_snow"
+	Thickness float64 `json:"thickness"` // film thickness in metres
+	EpsR      float64 `json:"eps_r"`     // relative permittivity
+	LossTan   float64 `json:"loss_tan"`  // loss tangent tanδ
 }
 
 // LoadDTO describes a lumped R/L/C load attached to a single segment.
@@ -128,6 +138,8 @@ type SweepRequest struct {
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
 	// BasisOrder for the sweep — forwarded to each Simulate() call.
 	BasisOrder string `json:"basis_order,omitempty"`
+	// Weather applies a global environmental film on every wire.
+	Weather WeatherDTO `json:"weather,omitempty"`
 }
 
 // ToSimulateRequest converts a SweepRequest into a SimulateRequest using
@@ -143,6 +155,7 @@ func (s *SweepRequest) ToSimulateRequest() SimulateRequest {
 		TransmissionLines:  s.TransmissionLines,
 		ReferenceImpedance: s.ReferenceImpedance,
 		BasisOrder:         s.BasisOrder,
+		Weather:            s.Weather,
 	}
 }
 

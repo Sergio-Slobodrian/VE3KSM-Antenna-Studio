@@ -32,6 +32,7 @@ import ParetoViewer from '@/components/results/ParetoViewer';
 import TransientViewer from '@/components/results/TransientViewer';
 import PolarizationViewer from '@/components/results/PolarizationViewer';
 import ConvergenceViewer from '@/components/results/ConvergenceViewer';
+import WeatherPanel from '@/components/input/WeatherPanel';
 import WarningsBanner from '@/components/results/WarningsBanner';
 import SweepExport from '@/components/results/SweepExport';
 
@@ -147,6 +148,7 @@ const MainLayout: React.FC = () => {
             <LoadEditor />
             <TLEditor />
             <GroundConfig />
+            <WeatherPanel />
             <FrequencyInput />
           </div>
         </div>

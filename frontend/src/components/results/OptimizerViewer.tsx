@@ -40,6 +40,7 @@ const OptimizerViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const weather = useAntennaStore((s) => s.weather);
   const updateWire = useAntennaStore((s) => s.updateWire);
 
   // Variables (persisted in store)
@@ -173,7 +174,7 @@ const OptimizerViewer: React.FC = () => {
       const res = await runOptimizer(
         wires, source, loads, transmissionLines,
         ground, frequency, referenceImpedance,
-        variables, goals,
+        variables, goals, weather,
         {
           freqStartMhz: useBand ? bandStart : undefined,
           freqEndMhz: useBand ? bandEnd : undefined,
@@ -189,7 +190,7 @@ const OptimizerViewer: React.FC = () => {
       setLoading(false);
     }
   }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance,
-      variables, goals, useBand, bandStart, bandEnd, bandSteps, particles, iterations, setOptimResult]);
+      variables, goals, weather, useBand, bandStart, bandEnd, bandSteps, particles, iterations, setOptimResult]);
 
   // ─── Apply optimised geometry ─────────────────
   const handleApply = useCallback(() => {

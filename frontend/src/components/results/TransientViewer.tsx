@@ -286,6 +286,7 @@ const TransientViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const weather = useAntennaStore((s) => s.weather);
 
   // Settings
   const [freqStart, setFreqStart] = useState(frequency.freqStart || Math.max(0.1, frequency.frequencyMhz - 5));
@@ -318,6 +319,7 @@ const TransientViewer: React.FC = () => {
           centerFreqMhz: pulseType === 'modulated_gaussian' ? centerFreq : undefined,
           response,
         },
+        weather,
       );
       setTransientResult(res);
     } catch (e: unknown) {
@@ -326,7 +328,7 @@ const TransientViewer: React.FC = () => {
       setLoading(false);
     }
   }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance,
-      freqStart, freqEnd, numFreqs, pulseType, pulseWidth, centerFreq, response, setTransientResult]);
+      freqStart, freqEnd, numFreqs, pulseType, pulseWidth, centerFreq, response, weather, setTransientResult]);
 
   const responseLabel = RESPONSE_TYPES.find((r) => r.value === response)?.label ?? response;
 

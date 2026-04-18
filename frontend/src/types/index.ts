@@ -368,6 +368,31 @@ export interface ParetoResult {
   objectives: string[];
 }
 
+/** Weather condition applied as a global outer dielectric film on all wires. */
+export type WeatherPreset = 'dry' | 'rain' | 'ice' | 'wet_snow';
+
+export interface WeatherConfig {
+  preset: WeatherPreset;
+  thickness: number; // film thickness (m)
+  epsR: number;      // relative permittivity
+  lossTan: number;   // loss tangent tanδ
+}
+
+export interface WeatherPresetDef {
+  key: WeatherPreset;
+  label: string;
+  epsR: number;
+  lossTan: number;
+  defaultThicknessMm: number; // suggested film thickness in mm
+}
+
+export const WEATHER_PRESETS: WeatherPresetDef[] = [
+  { key: 'dry',      label: 'Dry',      epsR: 0,    lossTan: 0,     defaultThicknessMm: 0    },
+  { key: 'rain',     label: 'Rain',     epsR: 80,   lossTan: 0.05,  defaultThicknessMm: 0.1  },
+  { key: 'ice',      label: 'Ice',      epsR: 3.17, lossTan: 0.001, defaultThicknessMm: 1.0  },
+  { key: 'wet_snow', label: 'Wet snow', epsR: 1.6,  lossTan: 0.005, defaultThicknessMm: 3.0  },
+];
+
 /** A standard wire-coating preset with typical dielectric properties. */
 export interface CoatingPreset {
   key: string;

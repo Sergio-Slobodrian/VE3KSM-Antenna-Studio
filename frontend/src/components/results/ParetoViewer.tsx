@@ -132,6 +132,7 @@ const ParetoViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const weather = useAntennaStore((s) => s.weather);
   const updateWire = useAntennaStore((s) => s.updateWire);
 
   // Variables (persisted in store)
@@ -269,7 +270,7 @@ const ParetoViewer: React.FC = () => {
       const res = await runParetoOptimizer(
         wires, source, loads, transmissionLines,
         ground, frequency, referenceImpedance,
-        variables, objectives,
+        variables, objectives, weather,
         {
           freqStartMhz: useBand ? bandStart : undefined,
           freqEndMhz: useBand ? bandEnd : undefined,
@@ -291,7 +292,7 @@ const ParetoViewer: React.FC = () => {
       setLoading(false);
     }
   }, [wires, source, loads, transmissionLines, ground, frequency, referenceImpedance,
-      variables, objectives, useBand, bandStart, bandEnd, bandSteps, popSize, generations, setParetoResult]);
+      variables, objectives, weather, useBand, bandStart, bandEnd, bandSteps, popSize, generations, setParetoResult]);
 
   // ─── Apply selected solution ─────────────────
   const selectedSolution = result && result.front.length > selectedIdx ? result.front[selectedIdx] : null;

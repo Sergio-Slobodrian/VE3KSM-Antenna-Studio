@@ -5,49 +5,113 @@ import (
 	"math/cmplx"
 )
 
-// applyCoatingLoading adds the distributed impedance of a dielectric coating
-// to the Z-matrix diagonal using the NEC-4 IS-card model (Popović 1991).
-//
-// For a wire of conductor radius a coated to outer radius b = a + thickness
-// with relative permittivity εr and loss tangent tanδ, the coating presents
-// a distributed series impedance per unit length:
-//
-//	Z'_coat = (jωμ₀/2π) · (1 − 1/ε_r*) · ln(b/a)
-//
-// where ε_r* = εr(1 − j·tanδ) is the complex permittivity.
-//
-// For εr > 1 the imaginary part of Z'_coat is positive (inductive), slowing
-// the guided wave velocity and shifting resonance downward by 3–5% for typical
-// PVC coatings.  Dielectric loss (tanδ > 0) adds a real resistive term.
-//
-// The impedance is distributed over each triangle basis support (two adjacent
-// segments) with a 50/50 split, matching the convention in applyMaterialLoss.
-// The real part (dielectric loss) is credited to lossPerBasis for the
-// radiation-efficiency calculation.
-//
-// Skip condition: CoatingThickness ≤ 0 or CoatingEpsR ≤ 1 ⇒ wire is bare.
-func applyCoatingLoading(zmat zMatSetter, wires []Wire, segments []Segment,
-	wireSegOffsets, wireSegCounts, wireBasisOffsets []int,
-	omega float64, lossPerBasis []float64) {
+// dielectricLayer describes one concentric shell of dielectric material.
+type dielectricLayer struct {
+	EpsR        float64 // relative permittivity (≥ 1)
+	LossTan     float64 // loss tangent tanδ (≥ 0)
+	OuterRadius float64 // outer surface radius (m)
+}
 
-	for wi, w := range wires {
-		if w.CoatingThickness <= 0 || w.CoatingEpsR <= 1.0 {
+// multilayerZPerUnitLen computes the per-unit-length distributed series
+// impedance for a stack of concentric dielectric shells on a conductor of
+// radius a, using the generalised NEC-4 IS-card formula:
+//
+//	Z'_total = (jωμ₀/2π) · Σ_i (1/ε_{i−1}* − 1/ε_i*) · ln(b_i / b_{i−1})
+//
+// Layers are ordered inner-to-outer; ε_0* = 1 (the formula's starting
+// condition).  Layers with OuterRadius ≤ previous radius are skipped.
+func multilayerZPerUnitLen(a float64, layers []dielectricLayer, omega float64) complex128 {
+	if len(layers) == 0 {
+		return 0
+	}
+	jOmegaMu0Over2pi := complex(0, omega*Mu0/(2*math.Pi))
+	var sum complex128
+	prevEps := complex128(1) // ε_0* = 1
+	prevR := a
+	for _, l := range layers {
+		if l.OuterRadius <= prevR || l.EpsR < 1 {
 			continue
 		}
+		lnRatio := math.Log(l.OuterRadius / prevR)
+		epsI := complex(l.EpsR, -l.EpsR*l.LossTan)
+		sum += (1/prevEps - 1/epsI) * complex(lnRatio, 0)
+		prevEps = epsI
+		prevR = l.OuterRadius
+	}
+	return jOmegaMu0Over2pi * sum
+}
+
+// weatherLayer returns the dielectric parameters for a weather preset, or
+// (0,0) for "dry" / unknown presets.
+func weatherLayer(preset string) (epsR, lossTan float64) {
+	switch preset {
+	case "rain":
+		return 80.0, 0.05
+	case "ice":
+		return 3.17, 0.001
+	case "wet_snow":
+		return 1.6, 0.005
+	}
+	return 0, 0
+}
+
+// applyCoatingLoading adds the distributed series impedance from per-wire
+// dielectric coatings and/or a global weather film to the Z-matrix diagonal,
+// using the generalised multi-layer IS-card model.
+//
+// Layer stack (inner to outer) per wire:
+//  1. Wire coating (CoatingThickness > 0, CoatingEpsR > 1)
+//  2. Weather film  (weather.Thickness > 0, preset != "dry")
+//
+// For bare wires in dry conditions both layers are absent and the function
+// skips that wire entirely.  For a bare wire in rain the single water layer
+// reduces to the original single-layer formula.  For a PVC-coated wire in
+// ice the two-layer sum is used.
+//
+// The basis split and lossPerBasis accounting match applyMaterialLoss.
+func applyCoatingLoading(zmat zMatSetter, wires []Wire, segments []Segment,
+	wireSegOffsets, wireSegCounts, wireBasisOffsets []int,
+	omega float64, weather WeatherConfig, lossPerBasis []float64) {
+
+	// Use explicitly provided εr/tanδ if supplied; otherwise fall back to preset defaults.
+	weatherEpsR, weatherLossTan := weatherLayer(weather.Preset)
+	if weather.EpsR >= 1 {
+		weatherEpsR = weather.EpsR
+		weatherLossTan = weather.LossTan
+	}
+	hasWeather := weather.Thickness > 0 && weatherEpsR >= 1
+
+	for wi, w := range wires {
 		a := w.Radius
-		b := a + w.CoatingThickness
 		if a <= 0 {
 			continue
 		}
-		lnba := math.Log(b / a)
 
-		// Complex permittivity: ε_r* = εr(1 − j·tanδ)
-		epsrStar := complex(w.CoatingEpsR, -w.CoatingEpsR*w.CoatingLossTan)
+		// Build layer stack inner → outer.
+		var layers []dielectricLayer
+		curR := a
 
-		// Per-unit-length impedance: Z'_coat = (jωμ₀/2π) · (1 − 1/ε_r*) · ln(b/a)
-		jOmegaMu0Over2pi := complex(0, omega*Mu0/(2*math.Pi))
-		zPerUnitLen := jOmegaMu0Over2pi * (1 - 1/epsrStar) * complex(lnba, 0)
+		if w.CoatingThickness > 0 && w.CoatingEpsR > 1 {
+			curR = a + w.CoatingThickness
+			layers = append(layers, dielectricLayer{
+				EpsR:        w.CoatingEpsR,
+				LossTan:     w.CoatingLossTan,
+				OuterRadius: curR,
+			})
+		}
+		if hasWeather {
+			layers = append(layers, dielectricLayer{
+				EpsR:        weatherEpsR,
+				LossTan:     weatherLossTan,
+				OuterRadius: curR + weather.Thickness,
+			})
+		}
 
+		if len(layers) == 0 {
+			continue
+		}
+
+		zPerUnitLen := multilayerZPerUnitLen(a, layers, omega)
 		if cmplx.Abs(zPerUnitLen) == 0 {
 			continue
 		}
@@ -56,8 +120,6 @@ func applyCoatingLoading(zmat zMatSetter, wires []Wire, segments []Segment,
 		nSeg := wireSegCounts[wi]
 		basisOff := wireBasisOffsets[wi]
 
-		// nSeg-1 interior basis nodes; basis k spans segments k and k+1.
-		// Charge each basis with half of each adjacent segment's coating impedance.
 		for k := 0; k < nSeg-1; k++ {
 			seg1 := segments[segOff+k]
 			seg2 := segments[segOff+k+1]

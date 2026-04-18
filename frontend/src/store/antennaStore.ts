@@ -16,6 +16,7 @@ import type {
   TransmissionLine,
   GroundConfig,
   FrequencyConfig,
+  WeatherConfig,
   SimulationResult,
   SweepResult,
   DisplayUnit,
@@ -72,6 +73,9 @@ interface AntennaState {
   /** Cached convergence check result. */
   convergenceResult: ConvergenceResult | null;
 
+  /** Global weather film applied as an outer dielectric layer on all wires. */
+  weather: WeatherConfig;
+
   setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
@@ -102,6 +106,7 @@ interface AntennaState {
   setParetoObjectives: (objs: ParetoObjective[]) => void;
   setTransientResult: (result: TransientResult | null) => void;
   setConvergenceResult: (result: ConvergenceResult | null) => void;
+  setWeather: (weather: Partial<WeatherConfig>) => void;
 }
 
 const defaultWireId = uuidv4();
@@ -173,6 +178,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   ],
   transientResult: null,
   convergenceResult: null,
+  weather: { preset: 'dry', thickness: 0, epsR: 1.0, lossTan: 0 },
 
   // --- Actions ---
 
@@ -305,4 +311,5 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   setParetoObjectives: (objs) => set({ paretoObjectives: objs }),
   setTransientResult: (result) => set({ transientResult: result }),
   setConvergenceResult: (result) => set({ convergenceResult: result }),
+  setWeather: (w) => set((state) => ({ weather: { ...state.weather, ...w } })),
 }));

@@ -581,6 +581,12 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 		TransmissionLines:  lines,
 		ReferenceImpedance: req.ReferenceImpedance,
 		BasisOrder:         mom.BasisOrder(req.BasisOrder),
+		Weather: mom.WeatherConfig{
+			Preset:    req.Weather.Preset,
+			Thickness: req.Weather.Thickness,
+			EpsR:      req.Weather.EpsR,
+			LossTan:   req.Weather.LossTan,
+		},
 	}
 }
 

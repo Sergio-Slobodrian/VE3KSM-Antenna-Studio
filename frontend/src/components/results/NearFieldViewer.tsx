@@ -181,6 +181,7 @@ const NearFieldViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const weather = useAntennaStore((s) => s.weather);
 
   const [plane, setPlane] = useState<Plane>('xz');
   const [fixedCoord, setFixedCoord] = useState(0);
@@ -212,6 +213,7 @@ const NearFieldViewer: React.FC = () => {
           steps1: steps,
           steps2: steps,
         },
+        weather,
       );
       setResult(res);
     } catch (e: unknown) {
@@ -220,7 +222,7 @@ const NearFieldViewer: React.FC = () => {
       setLoading(false);
     }
   }, [wires, source, loads, transmissionLines, ground, frequency,
-      referenceImpedance, plane, fixedCoord, min1, max1, min2, max2, steps]);
+      referenceImpedance, plane, fixedCoord, min1, max1, min2, max2, steps, weather]);
 
   // Wire segments projected onto the current plane (for overlay)
   const wireLines = useMemo(() => {

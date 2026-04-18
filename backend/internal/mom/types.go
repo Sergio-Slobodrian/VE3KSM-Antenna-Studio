@@ -30,7 +30,8 @@ type SimulationInput struct {
 	// "" or "triangle" = piecewise-linear rooftop (default, classic).
 	// "sinusoidal" = piecewise-sinusoidal King-type (3-5x fewer unknowns).
 	// "quadratic" = piecewise-quadratic Hermite (smooth, higher-order).
-	BasisOrder BasisOrder `json:"basis_order,omitempty"`
+	BasisOrder BasisOrder   `json:"basis_order,omitempty"`
+	Weather    WeatherConfig `json:"weather,omitempty"`
 }
 
 // LoadTopology selects how a Load's R, L, and C components are combined.
@@ -92,6 +93,17 @@ type Wire struct {
 	CoatingThickness float64 `json:"coating_thickness,omitempty"` // coating outer shell thickness (m)
 	CoatingEpsR      float64 `json:"coating_eps_r,omitempty"`     // coating relative permittivity (εr)
 	CoatingLossTan   float64 `json:"coating_loss_tan,omitempty"`  // coating loss tangent (tanδ)
+}
+
+// WeatherConfig describes a global environmental film applied as an outer
+// dielectric layer on every wire (stacked on top of any per-wire coating).
+// Preset "dry" (or empty) contributes no loading; the other presets supply
+// εr and tanδ for the IS-card multi-layer formula.
+type WeatherConfig struct {
+	Preset    string  `json:"preset"`    // "dry", "rain", "ice", "wet_snow"
+	Thickness float64 `json:"thickness"` // film thickness (m); 0 = no film
+	EpsR      float64 `json:"eps_r"`     // relative permittivity (overrides preset default when > 0)
+	LossTan   float64 `json:"loss_tan"`  // loss tangent tanδ (overrides preset default when EpsR > 0)
 }
 
 // GroundConfig describes the ground plane configuration.

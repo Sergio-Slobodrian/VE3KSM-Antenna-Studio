@@ -12,6 +12,7 @@ import type {
   TransmissionLine,
   GroundConfig,
   FrequencyConfig,
+  WeatherConfig,
   SimulationResult,
   SweepResult,
   NearFieldResult,
@@ -111,6 +112,16 @@ function buildTLs(tls: TransmissionLine[]) {
   }));
 }
 
+function buildWeather(weather: WeatherConfig) {
+  if (weather.preset === 'dry' || weather.thickness <= 0) return undefined;
+  return {
+    preset: weather.preset,
+    thickness: weather.thickness,
+    eps_r: weather.epsR,
+    loss_tan: weather.lossTan,
+  };
+}
+
 /** Assemble a complete single-frequency simulation request. */
 export function buildSimulateRequest(
   wires: Wire[],
@@ -119,7 +130,8 @@ export function buildSimulateRequest(
   transmissionLines: TransmissionLine[],
   ground: GroundConfig,
   frequency: FrequencyConfig,
-  referenceImpedance: number
+  referenceImpedance: number,
+  weather: WeatherConfig
 ): SimulateRequest {
   return {
     wires: buildWires(wires),
@@ -130,6 +142,7 @@ export function buildSimulateRequest(
     frequency_mhz: frequency.frequencyMhz,
     reference_impedance: referenceImpedance,
     basis_order: frequency.basisOrder || undefined,
+    weather: buildWeather(weather),
   };
 }
 
@@ -141,7 +154,8 @@ export function buildSweepRequest(
   transmissionLines: TransmissionLine[],
   ground: GroundConfig,
   frequency: FrequencyConfig,
-  referenceImpedance: number
+  referenceImpedance: number,
+  weather: WeatherConfig
 ): SweepRequest {
   return {
     wires: buildWires(wires),
@@ -155,6 +169,7 @@ export function buildSweepRequest(
     reference_impedance: referenceImpedance,
     sweep_mode: frequency.sweepMode === 'auto' ? undefined : frequency.sweepMode,
     basis_order: frequency.basisOrder || undefined,
+    weather: buildWeather(weather),
   } as SweepRequest;
 }
 
@@ -418,6 +433,7 @@ export async function computeNearField(
   frequency: FrequencyConfig,
   referenceImpedance: number,
   grid: NearFieldGrid,
+  weather: WeatherConfig,
 ): Promise<NearFieldResult> {
   const body = {
     sim: {
@@ -428,6 +444,7 @@ export async function computeNearField(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      weather: buildWeather(weather),
     },
     grid,
   };
@@ -446,6 +463,7 @@ export async function computeCMA(
   ground: GroundConfig,
   frequency: FrequencyConfig,
   referenceImpedance: number,
+  weather: WeatherConfig,
 ): Promise<CMAResult> {
   const body = {
     wires: buildWires(wires),
@@ -455,6 +473,7 @@ export async function computeCMA(
     ground: buildGround(ground),
     frequency_mhz: frequency.frequencyMhz,
     reference_impedance: referenceImpedance,
+    weather: buildWeather(weather),
   };
   return fetchJson<CMAResult>('/api/cma', body);
 }
@@ -474,6 +493,7 @@ export async function runOptimizer(
   referenceImpedance: number,
   variables: OptimVariable[],
   goals: OptimGoal[],
+  weather: WeatherConfig,
   options?: {
     freqStartMhz?: number;
     freqEndMhz?: number;
@@ -492,6 +512,7 @@ export async function runOptimizer(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      weather: buildWeather(weather),
     },
     variables,
     goals,
@@ -527,6 +548,7 @@ export async function computeTransient(
     centerFreqMhz?: number;
     response?: string;
   },
+  weather: WeatherConfig,
 ): Promise<TransientResult> {
   const body = {
     sim: {
@@ -537,6 +559,7 @@ export async function computeTransient(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      weather: buildWeather(weather),
     },
     freq_start_mhz: options.freqStartMhz,
     freq_end_mhz: options.freqEndMhz,
@@ -563,6 +586,7 @@ export async function runParetoOptimizer(
   referenceImpedance: number,
   variables: OptimVariable[],
   objectives: ParetoObjective[],
+  weather: WeatherConfig,
   options?: {
     freqStartMhz?: number;
     freqEndMhz?: number;
@@ -581,6 +605,7 @@ export async function runParetoOptimizer(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      weather: buildWeather(weather),
     },
     variables,
     objectives,
@@ -659,10 +684,11 @@ export async function checkConvergence(
   ground: GroundConfig,
   frequency: FrequencyConfig,
   referenceImpedance: number,
+  weather: WeatherConfig,
 ): Promise<ConvergenceResult> {
   const body = buildSimulateRequest(
     wires, source, loads, transmissionLines,
-    ground, frequency, referenceImpedance,
+    ground, frequency, referenceImpedance, weather,
   );
   return fetchJson<ConvergenceResult>('/api/convergence', body);
 }

@@ -24,6 +24,7 @@ import type {
   TransientResult,
   ConvergenceResult,
   Template,
+  EnvLayer,
 } from '@/types';
 
 const API_BASE: string = import.meta.env.VITE_API_BASE || '';
@@ -38,6 +39,7 @@ interface SimulateRequest {
   frequency_mhz: number;
   reference_impedance: number;
   basis_order?: string;
+  env_layer?: ReturnType<typeof buildEnvLayer>;
 }
 
 /** POST body for /api/sweep (snake_case keys matching Go backend). */
@@ -53,6 +55,7 @@ interface SweepRequest {
   reference_impedance: number;
   sweep_mode?: string;
   basis_order?: string;
+  env_layer?: ReturnType<typeof buildEnvLayer>;
 }
 
 // --- Request builders: strip client-only fields (id) and remap key casing ---
@@ -84,6 +87,16 @@ function buildGround(ground: GroundConfig) {
     type: ground.type,
     conductivity: ground.conductivity,
     permittivity: ground.permittivity,
+  };
+}
+
+/** Serialize the environmental film layer; returns undefined when inactive. */
+function buildEnvLayer(layer: EnvLayer) {
+  if (layer.thickness <= 0 || layer.permittivity < 1) return undefined;
+  return {
+    permittivity: layer.permittivity,
+    thickness: layer.thickness,
+    loss_tangent: layer.lossTangent,
   };
 }
 
@@ -119,7 +132,8 @@ export function buildSimulateRequest(
   transmissionLines: TransmissionLine[],
   ground: GroundConfig,
   frequency: FrequencyConfig,
-  referenceImpedance: number
+  referenceImpedance: number,
+  envLayer?: EnvLayer,
 ): SimulateRequest {
   return {
     wires: buildWires(wires),
@@ -130,6 +144,7 @@ export function buildSimulateRequest(
     frequency_mhz: frequency.frequencyMhz,
     reference_impedance: referenceImpedance,
     basis_order: frequency.basisOrder || undefined,
+    env_layer: envLayer ? buildEnvLayer(envLayer) : undefined,
   };
 }
 
@@ -141,7 +156,8 @@ export function buildSweepRequest(
   transmissionLines: TransmissionLine[],
   ground: GroundConfig,
   frequency: FrequencyConfig,
-  referenceImpedance: number
+  referenceImpedance: number,
+  envLayer?: EnvLayer,
 ): SweepRequest {
   return {
     wires: buildWires(wires),
@@ -155,6 +171,7 @@ export function buildSweepRequest(
     reference_impedance: referenceImpedance,
     sweep_mode: frequency.sweepMode === 'auto' ? undefined : frequency.sweepMode,
     basis_order: frequency.basisOrder || undefined,
+    env_layer: envLayer ? buildEnvLayer(envLayer) : undefined,
   } as SweepRequest;
 }
 
@@ -418,6 +435,7 @@ export async function computeNearField(
   frequency: FrequencyConfig,
   referenceImpedance: number,
   grid: NearFieldGrid,
+  envLayer?: EnvLayer,
 ): Promise<NearFieldResult> {
   const body = {
     sim: {
@@ -428,6 +446,7 @@ export async function computeNearField(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      env_layer: envLayer ? buildEnvLayer(envLayer) : undefined,
     },
     grid,
   };
@@ -446,6 +465,7 @@ export async function computeCMA(
   ground: GroundConfig,
   frequency: FrequencyConfig,
   referenceImpedance: number,
+  envLayer?: EnvLayer,
 ): Promise<CMAResult> {
   const body = {
     wires: buildWires(wires),
@@ -455,6 +475,7 @@ export async function computeCMA(
     ground: buildGround(ground),
     frequency_mhz: frequency.frequencyMhz,
     reference_impedance: referenceImpedance,
+    env_layer: envLayer ? buildEnvLayer(envLayer) : undefined,
   };
   return fetchJson<CMAResult>('/api/cma', body);
 }
@@ -481,6 +502,7 @@ export async function runOptimizer(
     particles?: number;
     iterations?: number;
     seed?: number;
+    envLayer?: EnvLayer;
   },
 ): Promise<OptimResult> {
   const body = {
@@ -492,6 +514,7 @@ export async function runOptimizer(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      env_layer: options?.envLayer ? buildEnvLayer(options.envLayer) : undefined,
     },
     variables,
     goals,
@@ -526,6 +549,7 @@ export async function computeTransient(
     pulseWidthNs?: number;
     centerFreqMhz?: number;
     response?: string;
+    envLayer?: EnvLayer;
   },
 ): Promise<TransientResult> {
   const body = {
@@ -537,6 +561,7 @@ export async function computeTransient(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      env_layer: options.envLayer ? buildEnvLayer(options.envLayer) : undefined,
     },
     freq_start_mhz: options.freqStartMhz,
     freq_end_mhz: options.freqEndMhz,
@@ -570,6 +595,7 @@ export async function runParetoOptimizer(
     popSize?: number;
     generations?: number;
     seed?: number;
+    envLayer?: EnvLayer;
   },
 ): Promise<ParetoResult> {
   const body = {
@@ -581,6 +607,7 @@ export async function runParetoOptimizer(
       ground: buildGround(ground),
       frequency_mhz: frequency.frequencyMhz,
       reference_impedance: referenceImpedance,
+      env_layer: options?.envLayer ? buildEnvLayer(options.envLayer) : undefined,
     },
     variables,
     objectives,
@@ -659,10 +686,11 @@ export async function checkConvergence(
   ground: GroundConfig,
   frequency: FrequencyConfig,
   referenceImpedance: number,
+  envLayer?: EnvLayer,
 ): Promise<ConvergenceResult> {
   const body = buildSimulateRequest(
     wires, source, loads, transmissionLines,
-    ground, frequency, referenceImpedance,
+    ground, frequency, referenceImpedance, envLayer,
   );
   return fetchJson<ConvergenceResult>('/api/convergence', body);
 }

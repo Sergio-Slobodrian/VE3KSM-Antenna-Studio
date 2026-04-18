@@ -324,6 +324,8 @@ func SimulateCMA(input SimulationInput) (*CMAResult, error) {
 	}
 	applyCoating(Z, input.Wires, omega, allSegments,
 		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
+	applyEnvLayer(Z, input.EnvLayer, omega, input.Wires, allSegments,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
 	if len(input.TransmissionLines) > 0 {
 		if err := applyTransmissionLines(Z, input.TransmissionLines, omega,
 			input.Wires, wireSegCounts, wireBasisOffsets, lossPerBasis); err != nil {

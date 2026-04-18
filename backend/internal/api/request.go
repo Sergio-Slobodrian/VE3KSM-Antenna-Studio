@@ -9,6 +9,15 @@ import (
 	"antenna-studio/backend/internal/mom"
 )
 
+// EnvLayerDTO describes a global environmental dielectric film applied to all
+// wires (e.g. rain water, ice, wet snow).  Uses the same NEC-2 IS-card model
+// as per-wire CoatingPermittivity.  Zero Thickness or Permittivity < 1 = no-op.
+type EnvLayerDTO struct {
+	Permittivity float64 `json:"permittivity,omitempty"`
+	Thickness    float64 `json:"thickness,omitempty"`    // meters
+	LossTangent  float64 `json:"loss_tangent,omitempty"` // tan δ (≥0)
+}
+
 // SimulateRequest is the JSON body the frontend sends to POST /api/simulate.
 // It describes a complete single-frequency MoM simulation: antenna geometry
 // (wires), operating frequency, ground environment, and excitation source.
@@ -25,7 +34,9 @@ type SimulateRequest struct {
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
 	// BasisOrder selects the current expansion: "" or "triangle" (default),
 	// "sinusoidal" (King-type), or "quadratic" (Hermite).
-	BasisOrder string `json:"basis_order,omitempty"`
+	BasisOrder string      `json:"basis_order,omitempty"`
+	// EnvLayer describes a global environmental dielectric film (rain/ice/snow).
+	EnvLayer   EnvLayerDTO `json:"env_layer,omitempty"`
 }
 
 // LoadDTO describes a lumped R/L/C load attached to a single segment.
@@ -133,7 +144,9 @@ type SweepRequest struct {
 	// ReferenceImpedance (Ω) for VSWR.  Zero or omitted → 50 Ω.
 	ReferenceImpedance float64 `json:"reference_impedance,omitempty"`
 	// BasisOrder for the sweep — forwarded to each Simulate() call.
-	BasisOrder string `json:"basis_order,omitempty"`
+	BasisOrder string      `json:"basis_order,omitempty"`
+	// EnvLayer describes a global environmental dielectric film (rain/ice/snow).
+	EnvLayer   EnvLayerDTO `json:"env_layer,omitempty"`
 }
 
 // ToSimulateRequest converts a SweepRequest into a SimulateRequest using
@@ -149,6 +162,7 @@ func (s *SweepRequest) ToSimulateRequest() SimulateRequest {
 		TransmissionLines:  s.TransmissionLines,
 		ReferenceImpedance: s.ReferenceImpedance,
 		BasisOrder:         s.BasisOrder,
+		EnvLayer:           s.EnvLayer,
 	}
 }
 
@@ -373,6 +387,20 @@ func (r *SimulateRequest) Validate() error {
 
 	if r.ReferenceImpedance < 0 {
 		return fmt.Errorf("reference_impedance must be non-negative, got %f", r.ReferenceImpedance)
+	}
+
+	// Validate environmental film when active.
+	el := r.EnvLayer
+	if el.Thickness > 0 || el.Permittivity > 0 {
+		if el.Permittivity < 1 {
+			return fmt.Errorf("env_layer.permittivity must be ≥ 1 (got %g)", el.Permittivity)
+		}
+		if el.Thickness <= 0 {
+			return fmt.Errorf("env_layer.thickness must be > 0 when permittivity is set")
+		}
+		if el.LossTangent < 0 {
+			return fmt.Errorf("env_layer.loss_tangent must be ≥ 0 (got %g)", el.LossTangent)
+		}
 	}
 
 	// Transmission lines: A must point at a real wire/segment; B may be

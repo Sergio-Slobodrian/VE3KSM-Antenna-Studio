@@ -159,6 +159,52 @@ func applyCoating(Z *mat.CDense, wires []Wire, omega float64,
 	}
 }
 
+// applyEnvLayer applies a uniform environmental dielectric film (rain, ice,
+// wet snow) to every wire in the model.  It uses the same NEC-2 IS-card
+// cylindrical-shell model as applyCoating, but the film parameters come from
+// a single global EnvLayer rather than per-wire fields.
+//
+// For each wire the outer shell radius is b = wire.Radius + layer.Thickness,
+// giving:
+//
+//	Z'_env = ln(b/a) / (2π · ω · ε₀ · εr · (tanδ + j))   [Ω/m]
+//
+// If layer.Thickness == 0 or layer.Permittivity < 1 the function returns
+// immediately (no-op).
+func applyEnvLayer(Z *mat.CDense, layer EnvLayer, omega float64,
+	wires []Wire, segments []Segment,
+	wireSegOffsets, wireSegCounts, wireBasisOffsets []int,
+	lossPerBasis []float64) {
+
+	if layer.Thickness <= 0 || layer.Permittivity < 1 {
+		return
+	}
+	scale := 2 * math.Pi * omega * Eps0 * layer.Permittivity
+
+	for wi, w := range wires {
+		a := w.Radius
+		b := a + layer.Thickness
+		zPerMeter := complex(math.Log(b/a), 0) / complex(scale*layer.LossTangent, scale)
+
+		segOff := wireSegOffsets[wi]
+		nSeg := wireSegCounts[wi]
+		basisOff := wireBasisOffsets[wi]
+
+		for k := 0; k < nSeg-1; k++ {
+			seg1 := segments[segOff+k]
+			seg2 := segments[segOff+k+1]
+			avgLen := 0.5 * (2*seg1.HalfLength + 2*seg2.HalfLength)
+			zBasis := zPerMeter * complex(avgLen, 0)
+			bi := basisOff + k
+			cur := Z.At(bi, bi)
+			Z.Set(bi, bi, cur+zBasis)
+			if lossPerBasis != nil && bi < len(lossPerBasis) {
+				lossPerBasis[bi] += real(zBasis)
+			}
+		}
+	}
+}
+
 // resolveLoadBasis maps a (wire, segment) load specification to the global
 // basis index using the same nearest-interior-node rule as the source.
 // This keeps load and source placement intuitive and consistent: asking

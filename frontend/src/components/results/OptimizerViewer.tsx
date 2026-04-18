@@ -40,6 +40,7 @@ const OptimizerViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const envLayer = useAntennaStore((s) => s.envLayer);
   const updateWire = useAntennaStore((s) => s.updateWire);
 
   // Variables (persisted in store)
@@ -180,6 +181,7 @@ const OptimizerViewer: React.FC = () => {
           freqSteps: useBand ? bandSteps : undefined,
           particles,
           iterations,
+          envLayer,
         },
       );
       setOptimResult(res);

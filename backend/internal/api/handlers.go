@@ -581,6 +581,11 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 		TransmissionLines:  lines,
 		ReferenceImpedance: req.ReferenceImpedance,
 		BasisOrder:         mom.BasisOrder(req.BasisOrder),
+		EnvLayer: mom.EnvLayer{
+			Permittivity: req.EnvLayer.Permittivity,
+			Thickness:    req.EnvLayer.Thickness,
+			LossTangent:  req.EnvLayer.LossTangent,
+		},
 	}
 }
 

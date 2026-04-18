@@ -40,6 +40,34 @@ export const COATING_PRESETS: CoatingPreset[] = [
   { label: 'Custom',        er: -1  },
 ];
 
+/** One environmental-film preset (rain, ice, snow, etc.). */
+export interface EnvPreset {
+  label: string;
+  permittivity: number; // εr; 0 = no film
+  thickness: number;    // meters; 0 = no film
+  lossTangent: number;
+}
+
+/** Common environmental film presets for the EnvironmentConfig panel.
+ *  "None" has all zeros (no-op).  "Custom" has -1 sentinels — selecting it
+ *  leaves the editable fields at whatever the user had. */
+export const ENV_PRESETS: EnvPreset[] = [
+  { label: 'None',       permittivity:  0,   thickness: 0,      lossTangent: 0     },
+  { label: 'Light Rain', permittivity: 80,   thickness: 0.0002, lossTangent: 0.20  },
+  { label: 'Heavy Rain', permittivity: 80,   thickness: 0.0005, lossTangent: 0.30  },
+  { label: 'Wet Snow',   permittivity: 20,   thickness: 0.002,  lossTangent: 0.10  },
+  { label: 'Light Ice',  permittivity:  3.2, thickness: 0.001,  lossTangent: 0.005 },
+  { label: 'Heavy Ice',  permittivity:  3.2, thickness: 0.005,  lossTangent: 0.010 },
+  { label: 'Custom',     permittivity: -1,   thickness: -1,     lossTangent: -1    },
+];
+
+/** Global environmental dielectric film applied uniformly to all wires. */
+export interface EnvLayer {
+  permittivity: number; // εr ≥ 1; 0 = disabled
+  thickness: number;    // meters
+  lossTangent: number;  // tan δ ≥ 0; 0 = lossless
+}
+
 /** Human-friendly labels for the material dropdown. */
 export const MATERIAL_LABELS: Record<Material, string> = {
   '': 'Perfect (lossless)',

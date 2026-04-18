@@ -9,6 +9,16 @@
 // source excitation, frequency sweeps, and far-field radiation pattern computation.
 package mom
 
+// EnvLayer describes a uniform dielectric film applied to all wires, modelling
+// environmental effects such as rain, ice, or wet snow.  It uses the same
+// NEC-2 IS-card cylindrical-shell model as per-wire CoatingPermittivity.
+// When Thickness == 0 or Permittivity < 1 the layer is a no-op.
+type EnvLayer struct {
+	Permittivity float64 `json:"permittivity"` // relative εr (≥1); 0 = disabled
+	Thickness    float64 `json:"thickness"`    // shell wall thickness (m)
+	LossTangent  float64 `json:"loss_tangent"` // tan δ (≥0); 0 = lossless
+}
+
 // SimulationInput holds the full input for a single-frequency MoM simulation run.
 // It describes the antenna geometry (wires), operating frequency, ground plane
 // configuration, and excitation source.
@@ -18,6 +28,7 @@ type SimulationInput struct {
 	Ground    GroundConfig `json:"ground"`
 	Source    Source       `json:"source"`
 	Loads     []Load       `json:"loads,omitempty"` // optional lumped R/L/C loads
+	EnvLayer  EnvLayer     `json:"env_layer,omitempty"` // global environmental film (rain/ice)
 	// skipBandgapRetry suppresses the negative-R self-diagnosis
 	// recursion in Simulate.  Set internally on perturbed probes.
 	skipBandgapRetry bool `json:"-"`

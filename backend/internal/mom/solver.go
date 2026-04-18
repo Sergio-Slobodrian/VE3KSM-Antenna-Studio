@@ -221,8 +221,11 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 	// Step 5e: Apply distributed series reactance for dielectric-coated wires.
 	applyCoating(Z, input.Wires, omega, allSegments,
 		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
+	// Step 5f: Apply global environmental film (rain/ice/snow) over all wires.
+	applyEnvLayer(Z, input.EnvLayer, omega, input.Wires, allSegments,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
 
-	// Step 5f: Stamp transmission-line elements (NEC TL cards).  Two-port
+	// Step 5g: Stamp transmission-line elements (NEC TL cards).  Two-port
 	// TLs add to four Z-matrix entries; stubs collapse to a single
 	// diagonal stamp.  Resistive parts of Z11/Z22 feed the loss budget.
 	if len(input.TransmissionLines) > 0 {
@@ -520,6 +523,9 @@ func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFiel
 
 	// Dielectric coating
 	applyCoating(Z, input.Wires, omega, allSegments,
+		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
+	// Environmental film
+	applyEnvLayer(Z, input.EnvLayer, omega, input.Wires, allSegments,
 		wireSegOffsets, wireSegCounts, wireBasisOffsets, lossPerBasis)
 
 	// Transmission lines

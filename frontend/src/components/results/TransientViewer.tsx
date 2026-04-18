@@ -286,6 +286,7 @@ const TransientViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const envLayer = useAntennaStore((s) => s.envLayer);
 
   // Settings
   const [freqStart, setFreqStart] = useState(frequency.freqStart || Math.max(0.1, frequency.frequencyMhz - 5));
@@ -317,6 +318,7 @@ const TransientViewer: React.FC = () => {
           pulseWidthNs: pulseWidth,
           centerFreqMhz: pulseType === 'modulated_gaussian' ? centerFreq : undefined,
           response,
+          envLayer,
         },
       );
       setTransientResult(res);

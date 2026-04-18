@@ -30,6 +30,7 @@ const ConvergenceViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const envLayer = useAntennaStore((s) => s.envLayer);
 
   const result = useAntennaStore((s) => s.convergenceResult);
   const setConvergenceResult = useAntennaStore((s) => s.setConvergenceResult);
@@ -42,7 +43,7 @@ const ConvergenceViewer: React.FC = () => {
     try {
       const res = await checkConvergence(
         wires, source, loads, transmissionLines,
-        ground, frequency, referenceImpedance,
+        ground, frequency, referenceImpedance, envLayer,
       );
       setConvergenceResult(res);
     } catch (e: unknown) {

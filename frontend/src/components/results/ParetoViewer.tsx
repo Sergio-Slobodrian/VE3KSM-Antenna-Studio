@@ -132,6 +132,7 @@ const ParetoViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const envLayer = useAntennaStore((s) => s.envLayer);
   const updateWire = useAntennaStore((s) => s.updateWire);
 
   // Variables (persisted in store)
@@ -276,6 +277,7 @@ const ParetoViewer: React.FC = () => {
           freqSteps: useBand ? bandSteps : undefined,
           popSize,
           generations,
+          envLayer,
         },
       );
       setParetoResult(res);

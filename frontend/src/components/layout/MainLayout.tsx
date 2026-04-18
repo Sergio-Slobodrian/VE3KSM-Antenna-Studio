@@ -14,6 +14,7 @@ import WireTable from '@/components/input/WireTable';
 import SourceConfig from '@/components/input/SourceConfig';
 import GroundConfig from '@/components/input/GroundConfig';
 import FrequencyInput from '@/components/input/FrequencyInput';
+import EnvironmentConfig from '@/components/input/EnvironmentConfig';
 import LoadEditor from '@/components/input/LoadEditor';
 import TLEditor from '@/components/input/TLEditor';
 import WireEditor from '@/components/editor/WireEditor';
@@ -147,6 +148,7 @@ const MainLayout: React.FC = () => {
             <LoadEditor />
             <TLEditor />
             <GroundConfig />
+            <EnvironmentConfig />
             <FrequencyInput />
           </div>
         </div>

@@ -27,6 +27,7 @@ import type {
   ParetoObjective,
   TransientResult,
   ConvergenceResult,
+  EnvLayer,
 } from '@/types';
 
 /** Full shape of the Zustand store: state fields + action methods. */
@@ -72,6 +73,9 @@ interface AntennaState {
   /** Cached convergence check result. */
   convergenceResult: ConvergenceResult | null;
 
+  /** Global environmental film (rain/ice/snow) applied to all wires. */
+  envLayer: EnvLayer;
+
   setDisplayUnit: (unit: DisplayUnit) => void;
   addWire: (wire?: Partial<Wire>) => void;
   updateWire: (id: string, updates: Partial<Wire>) => void;
@@ -102,6 +106,7 @@ interface AntennaState {
   setParetoObjectives: (objs: ParetoObjective[]) => void;
   setTransientResult: (result: TransientResult | null) => void;
   setConvergenceResult: (result: ConvergenceResult | null) => void;
+  setEnvLayer: (layer: Partial<EnvLayer>) => void;
 }
 
 const defaultWireId = uuidv4();
@@ -170,6 +175,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   ],
   transientResult: null,
   convergenceResult: null,
+  envLayer: { permittivity: 0, thickness: 0, lossTangent: 0 },
 
   // --- Actions ---
 
@@ -296,4 +302,5 @@ export const useAntennaStore = create<AntennaState>((set) => ({
   setParetoObjectives: (objs) => set({ paretoObjectives: objs }),
   setTransientResult: (result) => set({ transientResult: result }),
   setConvergenceResult: (result) => set({ convergenceResult: result }),
+  setEnvLayer: (layer) => set((s) => ({ envLayer: { ...s.envLayer, ...layer } })),
 }));

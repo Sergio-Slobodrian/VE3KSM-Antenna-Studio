@@ -181,6 +181,7 @@ const NearFieldViewer: React.FC = () => {
   const ground = useAntennaStore((s) => s.ground);
   const frequency = useAntennaStore((s) => s.frequency);
   const referenceImpedance = useAntennaStore((s) => s.referenceImpedance);
+  const envLayer = useAntennaStore((s) => s.envLayer);
 
   const [plane, setPlane] = useState<Plane>('xz');
   const [fixedCoord, setFixedCoord] = useState(0);
@@ -212,6 +213,7 @@ const NearFieldViewer: React.FC = () => {
           steps1: steps,
           steps2: steps,
         },
+        envLayer,
       );
       setResult(res);
     } catch (e: unknown) {

@@ -5,3 +5,5 @@ bin/
 .env
 .DS_Store
 launcher
+claude_context.md
+sonnet_context.md

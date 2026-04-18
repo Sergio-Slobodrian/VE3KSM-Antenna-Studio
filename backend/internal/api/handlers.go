@@ -568,9 +568,10 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 		Wires:     wires,
 		Frequency: req.FrequencyMHz * 1e6,
 		Ground: mom.GroundConfig{
-			Type:         req.Ground.Type,
-			Conductivity: req.Ground.Conductivity,
-			Permittivity: req.Ground.Permittivity,
+			Type:           req.Ground.Type,
+			Conductivity:   req.Ground.Conductivity,
+			Permittivity:   req.Ground.Permittivity,
+			MoisturePreset: req.Ground.MoisturePreset,
 		},
 		Source: mom.Source{
 			WireIndex:    req.Source.WireIndex,

@@ -110,6 +110,27 @@ All four fields (preset, thickness, εᵣ, tanδ) are editable; selecting a pres
 | Ice (weather) | 3.17 | 0.002 | 1 mm |
 | Water film (wet) | 80 | 0.2 | 0.1 mm |
 
+**Interpretation notes:**
+- **Velocity factor.** A coated wire supports a slower guided wave; in the
+  quasi-TEM limit the phase velocity in the coated region scales as
+  `vf ≈ 1/√εᵣ_eff` where `εᵣ_eff` is the geometric mean over the layer
+  stack. For a 2 mm PVC jacket (εᵣ = 2.3) the expected resonance shift of
+  a short dipole is on the order of a few percent; the
+  [coating_test.go](backend/internal/mom/coating_test.go) suite measures it.
+- **Loss tangent convention.** `tanδ = ε''/ε'` is a dimensionless ratio
+  (not a percentage). Typical values: PTFE ≈ 0.0002, PE ≈ 0.0002, XLPE ≈
+  0.0003, PVC ≈ 0.05, water ≈ 0.2. The solver treats `ε* = εᵣ − j·εᵣ·tanδ`;
+  any `tanδ > 0` contributes real resistance to the Z-matrix diagonal and
+  is tracked in the power budget.
+- **Geometric limit.** The MoM kernel assumes current flows along a thin
+  filament. The validator rejects any wire whose coated outer radius
+  (`a + thickness`, plus weather film if enabled) exceeds half the segment
+  length, and the NEC-2 exporter collapses the coating to an effective
+  radius using the lossless Tsai/Richmond relation
+  `ln(a_eff) = ln(a) + Σ_i (1 − 1/εᵣ_i) · ln(b_i/b_{i−1})`. NEC-2 cannot
+  represent lossy coatings; the exporter warns and drops the resistive
+  term in that case.
+
 ### Voltage Source
 - Single excitation port on any wire segment with configurable segment position
 - Voltage magnitude settable for normalized or absolute current/field output

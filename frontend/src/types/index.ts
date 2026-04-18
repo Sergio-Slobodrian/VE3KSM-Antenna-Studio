@@ -107,7 +107,42 @@ export interface GroundConfig {
   type: 'free_space' | 'perfect' | 'real';
   conductivity: number;
   permittivity: number;
+  moisturePreset: SoilMoisturePreset;
 }
+
+/** Soil moisture preset for the real-ground model.
+ *  'custom' leaves εr/σ exactly as the user typed them (legacy behaviour).
+ *  The other keys pre-fill εr and σ from ARRL / ITU-R P.527 soil categories.
+ */
+export type SoilMoisturePreset =
+  | 'custom'
+  | 'very_dry'
+  | 'dry'
+  | 'average'
+  | 'moist'
+  | 'wet'
+  | 'very_wet'
+  | 'salt_marsh'
+  | 'sea_water';
+
+export interface SoilMoisturePresetDef {
+  key: SoilMoisturePreset;
+  label: string;
+  epsR: number;  // relative permittivity; ignored for 'custom'
+  sigma: number; // conductivity S/m; ignored for 'custom'
+}
+
+export const SOIL_MOISTURE_PRESETS: SoilMoisturePresetDef[] = [
+  { key: 'custom',     label: 'Custom',            epsR: 0,  sigma: 0     },
+  { key: 'very_dry',   label: 'Very dry',          epsR: 3,  sigma: 0.001 },
+  { key: 'dry',        label: 'Dry',               epsR: 5,  sigma: 0.002 },
+  { key: 'average',    label: 'Average',           epsR: 13, sigma: 0.005 },
+  { key: 'moist',      label: 'Moist',             epsR: 20, sigma: 0.010 },
+  { key: 'wet',        label: 'Wet',               epsR: 30, sigma: 0.020 },
+  { key: 'very_wet',   label: 'Very wet',          epsR: 40, sigma: 0.050 },
+  { key: 'salt_marsh', label: 'Salt marsh',        epsR: 30, sigma: 1.0   },
+  { key: 'sea_water',  label: 'Sea water',         epsR: 80, sigma: 5.0   },
+];
 
 /** Sweep solver mode: 'auto' picks interpolated when steps > 32. */
 export type SweepMode = 'auto' | 'exact' | 'interpolated';

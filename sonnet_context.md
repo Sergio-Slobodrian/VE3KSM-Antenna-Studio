@@ -1,100 +1,112 @@
 # Session Context — VE3KSM Antenna Studio
 **Date:** 2026-04-17  
-**Model:** claude-sonnet-4-6 (Cowork mode)  
-**Workspace:** `C:\Users\User\Documents\WSLProjects\AntennaDesigner`
+**Model:** claude-sonnet-4-6  
+**Workspace:** `/home/sergio/AntennaDesigner2`
 
 ---
 
 ## What Was Done This Session
 
-### 1. Project Scan
-A full codebase exploration was performed on the AntennaDesigner project. Key findings:
+### 1. Documentation Updates
 
-- **Project name:** VE3KSM Antenna Studio
-- **Purpose:** Web-based antenna design and simulation tool using the Method of Moments (MoM) electromagnetic solver
-- **Stack:** Go 1.24 backend (Gin, gonum, esbuild), React 18.3 + TypeScript frontend (Three.js, Recharts, Zustand)
-- **Architecture:** Single Go binary serves both the REST API and the compiled frontend (no Node.js at runtime)
-- **86+ unit tests** across backend packages
-- **Key API endpoints:** `/api/simulate`, `/api/sweep`, `/api/templates`, `/api/nec2/*`, `/api/match`, `/api/nearfield`, `/api/cma`, `/api/optimize`, `/api/pareto-optimize`, `/api/transient`, `/api/convergence`
+Three documentation files were updated to cover the three new features that had been implemented but not yet documented.
 
-### 2. Files Created
+#### `README.md` (project root)
+- File was **truncated at line 70** (`make build    #`) — now complete.
+- Added: Production Build, Docker, Testing sections.
+- Added: **Key Capabilities** summary listing all major features including coated-wire loading, weather loading, and full-circle elevation cuts.
+- Added: links to README2.md, doc/UserGuide.md, and ARCHITECTURE.md at the bottom.
 
-#### `README2.md` (project root)
-A complete feature list document covering:
-- MoM solver details (basis functions, MPIE, LU/GMRES solvers, quadrature)
-- Ground plane models (free space, PEC, real lossy, complex-image method)
-- Frequency analysis (single, linear sweep, log sweep, interpolated/AWE fast sweep)
-- Antenna geometry: wires, lumped loads (R/L/C series/parallel), transmission-line elements, conductor materials
-- Antenna presets: half-wave dipole, quarter-wave vertical, 3-element Yagi, inverted-V, full-wave loop, spiral
-- Far-field metrics (gain, directivity, F/B ratio, beamwidth, sidelobe level, efficiency)
-- Impedance matching: L, Pi, T, Gamma, Beta-match, toroidal transformer (E12 values, ASCII schematic)
-- All visualization tabs: 3D pattern, 2D polar cut, SWR, impedance, currents, Smith chart, near-field, polarization, CMA, optimizer, Pareto, transient, convergence
-- Advanced tools: CMA, single-objective optimizer (Nelder-Mead / PSO), Pareto optimizer, transient analysis, convergence checker
-- NEC-2 import/export, JSON save/load, CSV sweep export
-- Deployment: `make deps/run/build/test/docker-up/docker-down`, Docker Compose, env vars (`PORT`, `CORS_ORIGINS`)
-- Tech stack table
+#### `README2.md` (project root — full feature list)
+- Added **Dielectric Wire Coatings** subsection under "Antenna Geometry & Components" with IS-card physics formula and full 11-entry preset table.
+- Added **Weather / Environment Loading** as a new top-level section with multi-layer formula and 4-entry preset table.
+- Updated **2D Polar Cut Viewer** bullet to describe the full 360° elevation circle rendering.
+- Updated **Input Forms** bullet to mention coating columns and Weather Panel.
 
-#### `doc/UserGuide.md` (new `doc/` subdirectory)
-A 13-section end-user manual covering:
-1. Introduction
-2. Getting Started (prerequisites, first-time setup, production build, Docker, env vars)
-3. Application Layout (annotated diagram of the 3-zone UI)
-4. Designing an Antenna (templates, wire table, 3D editor, source config, ground config, loads, TL elements, materials)
-5. Running a Simulation (single-frequency and sweep, performance guidance table)
-6. Interpreting Results (status bar, 3D pattern, polar cuts, SWR chart, impedance chart, currents, Smith chart, near-field, polarization)
-7. Impedance Matching Networks (all topologies, toroidal transformer guidance)
-8. Advanced Analysis Tools (CMA, single-objective optimizer, Pareto optimizer, transient, convergence)
-9. Saving, Loading, and Exporting (JSON, CSV, NEC-2 import/export)
-10. Validation and Warnings (table of common warnings, causes, fixes)
-11. Reference: Units and Conventions (table + coordinate system)
-12. Reference: Keyboard & Mouse Controls
-13. Troubleshooting (WebGL, npm, NaN SWR, slow sweep, matching negatives, NEC-2 import failures, Docker)
+#### `doc/UserGuide.md` (full user guide)
+- §3 Application Layout diagram: replaced `Frequency Input` with `Weather Panel` + `Frequency Input` + `TL Editor` to match actual UI order.
+- §4.2 Wire Table: expanded column table to include Coating Preset, Coat-t, εᵣ, tanδ columns with usage note.
+- Added new **§4.9 Configuring Weather / Environment Loading** covering Weather Panel controls, all four presets, and typical physical effects.
+- §4 Table of Contents: added link to new §4.9.
+- §6.3 Polar Cuts: added paragraph explaining full 360° elevation display (front lobe right half, back lobe left half, 45° spoke labels).
+
+### 2. Context / Memory Updates
+
+- **`claude_context.md`** — added "Documentation State" table showing all three doc files are current; updated date.
+- **`memory/project_overview.md`** — updated shipped features list, doc state, and remaining polish items.
+
+---
+
+## New Features Documented (Implemented in Previous Sessions)
+
+### Coated-Wire Dielectric Loading (IS-card model)
+- Physics: distributed series impedance `Z'_coat = (jωμ₀/2π)·(1−1/εᵣ*)·ln(b/a)`
+- Per-wire fields: `CoatingThickness`, `CoatingEpsR`, `CoatingLossTan`
+- 11-entry preset dropdown in WireRow (Bare wire default, PVC, PE, PTFE, FEP, XLPE, Nylon, Rubber, Enamel, Ice, Water film)
+- Applied in all simulation modes; εᵣ/tanδ inputs grey out when thickness = 0
+- Tests in `mom/coating_test.go` (bare unchanged, resonance shift, lossy resistance)
+
+### Global Weather / Environment Loading
+- Multi-layer IS-card formula stacked over per-wire coating
+- `WeatherConfig { Preset, Thickness, EpsR, LossTan }` in `SimulationInput`
+- `WeatherPanel` component (file: `frontend/src/components/input/EnvironmentConfig.tsx`) inserted in left panel between GroundConfig and FrequencyInput
+- 4 presets: Dry (inactive), Rain (εᵣ=80, tanδ=0.05, 0.1 mm), Ice (εᵣ=3.17, tanδ=0.001, 1 mm), Wet snow (εᵣ=1.6, tanδ=0.005, 3 mm)
+- Panel header accent-coloured when active; applied to all 8 API call paths
+
+### Elevation Polar Cut — Full 360° Rendering
+- Backend: `PolarCuts` struct has new `ElevationBackDeg` / `ElevationBackGainDB` fields (JSON: `elevation_back_deg`, `elevation_back_gain_db`)
+- Frontend (`PolarCut.tsx`): front side (phi=peak) right half, back side (phi+180°) left half, combined as one closed SVG path
+- Spoke labels at 8 × 45° positions (0°–315°)
 
 ---
 
 ## Project Structure Quick Reference
 
 ```
-AntennaDesigner/
-├── README.md                        # Original quick-start readme
-├── README2.md                       # ← NEW: complete feature list
-├── ARCHITECTURE.md                  # Detailed design doc (37 KB)
-├── ROADMAP.md                       # Feature roadmap
-├── Makefile                         # Build targets
+AntennaDesigner2/
+├── README.md                        # Quick-start + architecture + capabilities
+├── README2.md                       # Complete feature list
+├── ARCHITECTURE.md                  # Internal design notes (37 KB)
+├── ROADMAP.md                       # Feature roadmap (all 17 items shipped)
+├── claude_context.md                # ← Primary Claude continuity file
+├── sonnet_context.md                # ← This file
+├── Makefile
 ├── docker-compose.yml
 ├── doc/
-│   └── UserGuide.md                 # ← NEW: full user guide
+│   └── UserGuide.md                 # Full user guide (13 sections)
 ├── backend/
-│   ├── cmd/server/main.go           # Entry point
+│   ├── cmd/server/main.go
 │   └── internal/
-│       ├── api/       (7 files)     # HTTP handlers, DTOs, middleware
-│       ├── mom/       (44 files)    # MoM solver core
-│       ├── geometry/  (4 files)     # Templates, wire/ground validation
-│       ├── match/     (4 files)     # Matching network synthesis
-│       ├── nec2/      (5 files)     # NEC-2 import/export
-│       ├── assets/    (3 files)     # esbuild frontend bundler
-│       └── config/    (2 files)     # Env var config
+│       ├── api/       handlers.go, request.go
+│       ├── mom/       solver.go, types.go, coating.go, metrics.go, ...
+│       ├── geometry/
+│       ├── match/
+│       ├── nec2/
+│       ├── assets/
+│       └── config/
 └── frontend/
     └── src/
-        ├── components/ (41 files)   # React UI components
-        ├── store/antennaStore.ts    # Zustand global state
-        ├── api/client.ts            # Fetch API wrapper
-        ├── types/index.ts           # TypeScript interfaces
-        └── utils/                  # Conversions, validation, export
+        ├── components/
+        │   ├── input/   WireTable.tsx, WireRow.tsx, EnvironmentConfig.tsx, ...
+        │   └── results/ PolarCut.tsx, CMAViewer.tsx, ...
+        ├── store/antennaStore.ts
+        ├── api/client.ts
+        └── types/index.ts
 ```
 
 ---
 
-## Pending / Suggested Next Steps
-- No outstanding tasks from this session.
-- Possible follow-ups based on ROADMAP.md contents (not fully read):
-  - Review and act on items listed in `ROADMAP.md`
-  - Add a `doc/` index or link the new docs from `README.md`
-  - Consider adding API reference documentation
+## Remaining Roadmap (Polish Only)
+
+1. **Regression benchmarks** — pin DL6WU Yagi + K1FO design against published NEC-2 numbers.
+2. **Frequency-dependent ε/tanδ tables** for coatings (deferred).
+3. **Per-wire b/a ratio warnings** when coating is thick relative to wire radius (deferred).
 
 ---
 
 ## How to Resume
-1. Open the project in Cowork or Claude Code pointed at `C:\Users\User\Documents\WSLProjects\AntennaDesigner`
-2. Read this file for context.
-3. The two new files (`README2.md` and `doc/UserGuide.md`) are complete and ready; no work was left mid-flight.
+
+1. Open the project pointed at `/home/sergio/AntennaDesigner2`.
+2. Read `claude_context.md` for the authoritative feature/architecture reference.
+3. Read this file (`sonnet_context.md`) for session history.
+4. All documentation is current — no work left mid-flight.

@@ -2,6 +2,7 @@ package nec2
 
 import (
 	"bytes"
+	"math"
 	"strings"
 	"testing"
 
@@ -106,7 +107,7 @@ func TestWrite_Dipole(t *testing.T) {
 		Ground: mom.GroundConfig{Type: "free_space"},
 	}
 	var buf bytes.Buffer
-	if err := Write(&buf, FromInput(in), WriteOptions{
+	if _, err := Write(&buf, FromInput(in), WriteOptions{
 		FreqStartMHz: 14, FreqStepMHz: 0, FreqSteps: 1,
 	}); err != nil {
 		t.Fatalf("write: %v", err)
@@ -136,7 +137,7 @@ func TestRoundTrip_Dipole(t *testing.T) {
 		Ground: mom.GroundConfig{Type: "free_space"},
 	}
 	var buf bytes.Buffer
-	if err := Write(&buf, FromInput(in), WriteOptions{
+	if _, err := Write(&buf, FromInput(in), WriteOptions{
 		FreqStartMHz: 14, FreqSteps: 1,
 	}); err != nil {
 		t.Fatalf("write: %v", err)
@@ -155,5 +156,219 @@ func TestRoundTrip_Dipole(t *testing.T) {
 	w := g.Input.Wires[0]
 	if w.Segments != 21 {
 		t.Errorf("segments: want 21, got %d", w.Segments)
+	}
+}
+
+// TestWrite_BareWireNoCoatingArtifacts confirms that a bare wire produces
+// no coating-related CM headers and no radius substitution.
+func TestWrite_BareWireNoCoatingArtifacts(t *testing.T) {
+	in := mom.SimulationInput{
+		Wires: []mom.Wire{{
+			X1: 0, Y1: -5, Z1: 0, X2: 0, Y2: 5, Z2: 0,
+			Radius: 0.001, Segments: 11,
+		}},
+		Source: mom.Source{WireIndex: 0, SegmentIndex: 5, Voltage: 1 + 0i},
+		Ground: mom.GroundConfig{Type: "free_space"},
+	}
+	var buf bytes.Buffer
+	warnings, err := Write(&buf, FromInput(in), WriteOptions{FreqStartMHz: 14, FreqSteps: 1})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings for bare wire, got %v", warnings)
+	}
+	out := buf.String()
+	if strings.Contains(out, "Dielectric coatings approximated") {
+		t.Errorf("bare wire should not emit coating header:\n%s", out)
+	}
+	if !strings.Contains(out, "GW 1 11 0 -5 0 0 5 0 0.001") {
+		t.Errorf("bare wire should keep original radius 0.001, got:\n%s", out)
+	}
+}
+
+// TestWrite_CoatedWireEffectiveRadius verifies the Tsai/Richmond
+// approximation: a lossless PVC coating should produce an effective
+// radius matching ln(a_eff) = ln(a) + (1 − 1/εr) ln(b/a), and the
+// header/CM documentation should describe the approximation.
+func TestWrite_CoatedWireEffectiveRadius(t *testing.T) {
+	const a = 0.001
+	const t_coat = 0.002
+	const epsR = 2.3
+	in := mom.SimulationInput{
+		Wires: []mom.Wire{{
+			X1: 0, Y1: -5, Z1: 0, X2: 0, Y2: 5, Z2: 0,
+			Radius: a, Segments: 11,
+			CoatingThickness: t_coat, CoatingEpsR: epsR, CoatingLossTan: 0,
+		}},
+		Source: mom.Source{WireIndex: 0, SegmentIndex: 5, Voltage: 1 + 0i},
+		Ground: mom.GroundConfig{Type: "free_space"},
+	}
+	var buf bytes.Buffer
+	warnings, err := Write(&buf, FromInput(in), WriteOptions{FreqStartMHz: 14, FreqSteps: 1})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out := buf.String()
+
+	// Lossless coating ⇒ no lossy-drop warning, but the generic
+	// "approximated by effective radius" warning must appear.
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning (approximation notice), got %d: %v", len(warnings), warnings)
+	}
+	if !strings.Contains(warnings[0], "effective wire radius") {
+		t.Errorf("warning text mismatch: %q", warnings[0])
+	}
+
+	// Header + per-wire CM card preserving original parameters.
+	if !strings.Contains(out, "CM Dielectric coatings approximated by effective radius") {
+		t.Errorf("missing approximation header:\n%s", out)
+	}
+	if !strings.Contains(out, "CM wire 1 coating:") {
+		t.Errorf("missing per-wire coating CM:\n%s", out)
+	}
+
+	// Verify the effective radius is physically consistent.  We can't
+	// check the GW line's floating-point formatting exactly, so extract
+	// the radius numerically from the coating CM card.
+	b := a + t_coat
+	expected := a * math.Pow(b/a, 1-1/epsR)
+	if !strings.Contains(out, "a_eff=") {
+		t.Fatalf("coating CM card missing a_eff field:\n%s", out)
+	}
+	// Also check via the exported helper.
+	got := effectiveRadius(a, [][2]float64{{epsR, b}})
+	if math.Abs(got-expected) > 1e-12 {
+		t.Errorf("effectiveRadius: got %g, expected %g", got, expected)
+	}
+	if got <= a {
+		t.Errorf("effective radius should exceed bare radius (coating adds inductance): got %g, bare %g", got, a)
+	}
+}
+
+// TestWrite_LossyCoatingWarning verifies that a coating with tanδ > 0
+// produces an explicit warning that resistive loading has been dropped.
+func TestWrite_LossyCoatingWarning(t *testing.T) {
+	in := mom.SimulationInput{
+		Wires: []mom.Wire{{
+			X1: 0, Y1: -5, Z1: 0, X2: 0, Y2: 5, Z2: 0,
+			Radius: 0.001, Segments: 11,
+			CoatingThickness: 0.002, CoatingEpsR: 2.3, CoatingLossTan: 0.05,
+		}},
+		Source: mom.Source{WireIndex: 0, SegmentIndex: 5, Voltage: 1 + 0i},
+		Ground: mom.GroundConfig{Type: "free_space"},
+	}
+	var buf bytes.Buffer
+	warnings, err := Write(&buf, FromInput(in), WriteOptions{FreqStartMHz: 14, FreqSteps: 1})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	foundLossy := false
+	for _, w := range warnings {
+		if strings.Contains(w, "tanδ") || strings.Contains(w, "resistive loading") {
+			foundLossy = true
+		}
+	}
+	if !foundLossy {
+		t.Errorf("expected lossy-coating warning, got %v", warnings)
+	}
+	if !strings.Contains(buf.String(), "tanδ") {
+		t.Errorf("file should document the dropped loss term:\n%s", buf.String())
+	}
+}
+
+// TestWrite_WeatherOnBareWire verifies that a global weather film is
+// applied to a bare wire as a single outer layer, producing an effective
+// radius > bare.
+func TestWrite_WeatherOnBareWire(t *testing.T) {
+	const a = 0.001
+	in := mom.SimulationInput{
+		Wires: []mom.Wire{{
+			X1: 0, Y1: -5, Z1: 0, X2: 0, Y2: 5, Z2: 0,
+			Radius: a, Segments: 11,
+		}},
+		Source:  mom.Source{WireIndex: 0, SegmentIndex: 5, Voltage: 1 + 0i},
+		Ground:  mom.GroundConfig{Type: "free_space"},
+		Weather: mom.WeatherConfig{Preset: "rain", Thickness: 1e-4},
+	}
+	var buf bytes.Buffer
+	warnings, err := Write(&buf, FromInput(in), WriteOptions{FreqStartMHz: 14, FreqSteps: 1})
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out := buf.String()
+	if len(warnings) == 0 {
+		t.Fatal("expected warnings for weather film")
+	}
+	if !strings.Contains(out, "CM wire 1 weather film:") {
+		t.Errorf("missing per-wire weather CM card:\n%s", out)
+	}
+
+	// Rain preset: εr=80, tanδ=0.05 → should trip the lossy warning too.
+	foundLossy := false
+	for _, w := range warnings {
+		if strings.Contains(w, "tanδ") || strings.Contains(w, "resistive loading") {
+			foundLossy = true
+		}
+	}
+	if !foundLossy {
+		t.Errorf("rain preset should trigger lossy-coating warning, got %v", warnings)
+	}
+}
+
+// TestWrite_GroundMoisturePreset verifies the writer emits a CM card
+// documenting the soil moisture preset when it is set (non-"custom"),
+// and omits the CM when the preset is "custom" or empty.
+func TestWrite_GroundMoisturePreset(t *testing.T) {
+	base := mom.SimulationInput{
+		Wires: []mom.Wire{{
+			X1: 0, Y1: -5, Z1: 1, X2: 0, Y2: 5, Z2: 1,
+			Radius: 0.001, Segments: 11,
+		}},
+		Source: mom.Source{WireIndex: 0, SegmentIndex: 5, Voltage: 1 + 0i},
+		Ground: mom.GroundConfig{
+			Type:           "real",
+			Conductivity:   0.02,
+			Permittivity:   30,
+			MoisturePreset: "wet",
+		},
+	}
+
+	var buf bytes.Buffer
+	if _, err := Write(&buf, FromInput(base), WriteOptions{FreqStartMHz: 14, FreqSteps: 1}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "CM Ground moisture preset: wet") {
+		t.Errorf("missing moisture-preset CM card:\n%s", out)
+	}
+	if !strings.Contains(out, "GN 2 0 0 0 30") {
+		t.Errorf("GN card should carry εr=30 unchanged:\n%s", out)
+	}
+
+	// "custom" preset must not emit a CM card.
+	base.Ground.MoisturePreset = "custom"
+	buf.Reset()
+	if _, err := Write(&buf, FromInput(base), WriteOptions{FreqStartMHz: 14, FreqSteps: 1}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if strings.Contains(buf.String(), "Ground moisture preset") {
+		t.Errorf("custom preset should not emit CM card:\n%s", buf.String())
+	}
+}
+
+// TestWrite_MultilayerEffectiveRadius confirms that coating + weather
+// stack inner-to-outer and produce a larger effective radius than coating
+// alone.
+func TestWrite_MultilayerEffectiveRadius(t *testing.T) {
+	const a = 0.001
+	rBare := effectiveRadius(a, nil)
+	rCoat := effectiveRadius(a, [][2]float64{{2.3, 0.003}})
+	rStack := effectiveRadius(a, [][2]float64{{2.3, 0.003}, {80.0, 0.0031}})
+	if !(rBare < rCoat && rCoat < rStack) {
+		t.Fatalf("expected rBare < rCoat < rStack, got %g / %g / %g", rBare, rCoat, rStack)
+	}
+	if rBare != a {
+		t.Errorf("no layers should return the bare radius, got %g want %g", rBare, a)
 	}
 }

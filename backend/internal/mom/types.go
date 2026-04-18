@@ -110,9 +110,10 @@ type WeatherConfig struct {
 // Type selects the ground model: "free_space" (no ground), "perfect" (PEC
 // image theory), or "real" (lossy ground via Fresnel reflection coefficients).
 type GroundConfig struct {
-	Type         string  `json:"type"`         // "free_space", "perfect", "real"
-	Conductivity float64 `json:"conductivity"` // ground conductivity in S/m (only for "real")
-	Permittivity float64 `json:"permittivity"` // relative permittivity (only for "real")
+	Type           string  `json:"type"`                      // "free_space", "perfect", "real"
+	Conductivity   float64 `json:"conductivity"`              // ground conductivity in S/m (only for "real")
+	Permittivity   float64 `json:"permittivity"`              // relative permittivity (only for "real")
+	MoisturePreset string  `json:"moisture_preset,omitempty"` // label only ("custom" or soil category); εr/σ remain authoritative
 }
 
 // Source describes the voltage excitation applied to the antenna.

@@ -81,11 +81,20 @@ function buildSource(source: Source) {
 }
 
 function buildGround(ground: GroundConfig) {
-  return {
+  const out: {
+    type: GroundConfig['type'];
+    conductivity: number;
+    permittivity: number;
+    moisture_preset?: string;
+  } = {
     type: ground.type,
     conductivity: ground.conductivity,
     permittivity: ground.permittivity,
   };
+  if (ground.moisturePreset && ground.moisturePreset !== 'custom') {
+    out.moisture_preset = ground.moisturePreset;
+  }
+  return out;
 }
 
 /** Strip client-side `id` field from loads and forward to the backend. */
@@ -407,6 +416,7 @@ export async function generateTemplate(
     type: ((grnd?.type as GroundConfig['type']) || 'free_space'),
     conductivity: (grnd?.conductivity as number) || 0.005,
     permittivity: (grnd?.permittivity as number) || 13,
+    moisturePreset: (grnd?.moisture_preset as GroundConfig['moisturePreset']) || 'custom',
   };
 
   return { wires, source, ground };

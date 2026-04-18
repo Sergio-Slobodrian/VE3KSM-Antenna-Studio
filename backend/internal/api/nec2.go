@@ -131,9 +131,13 @@ func HandleNEC2Export(c *gin.Context) {
 	}
 
 	var buf bytes.Buffer
-	if err := nec2.Write(&buf, gw, opts); err != nil {
+	warnings, err := nec2.Write(&buf, gw, opts)
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "NEC export failed: " + err.Error()})
 		return
+	}
+	for _, w := range warnings {
+		c.Writer.Header().Add("X-NEC2-Warning", w)
 	}
 	c.Header("Content-Disposition", `attachment; filename="antenna.nec"`)
 	c.Data(http.StatusOK, "text/plain; charset=utf-8", buf.Bytes())

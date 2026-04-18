@@ -22,6 +22,29 @@ export function validateWire(wire: Wire): string | null {
   if (wire.radius > 1) {
     return 'Wire radius seems too large (> 1 m)';
   }
+
+  // Dielectric coating: mirror the backend checks so users see the error
+  // inline instead of waiting for a simulate round-trip.
+  if (wire.coatingThickness < 0) {
+    return 'Coating thickness must be non-negative';
+  }
+  if (wire.coatingLossTan < 0) {
+    return 'Coating loss tangent must be non-negative';
+  }
+  if (wire.coatingThickness > 0) {
+    if (wire.coatingEpsR < 1) {
+      return 'Coating εr must be ≥ 1 when coating thickness > 0';
+    }
+    const dx = wire.x2 - wire.x1;
+    const dy = wire.y2 - wire.y1;
+    const dz = wire.z2 - wire.z1;
+    const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const segLen = length / wire.segments;
+    const coatedRadius = wire.radius + wire.coatingThickness;
+    if (coatedRadius > segLen / 2) {
+      return 'Coated outer radius is too large for the segment length; thin-wire kernel becomes invalid';
+    }
+  }
   return null;
 }
 

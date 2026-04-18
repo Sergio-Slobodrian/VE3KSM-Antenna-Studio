@@ -100,9 +100,10 @@ type WireDTO struct {
 // For "real" ground, Conductivity (S/m) and Permittivity (relative)
 // must both be positive; they are ignored for other ground types.
 type GroundDTO struct {
-	Type         string  `json:"type"`
-	Conductivity float64 `json:"conductivity"`
-	Permittivity float64 `json:"permittivity"`
+	Type           string  `json:"type"`
+	Conductivity   float64 `json:"conductivity"`
+	Permittivity   float64 `json:"permittivity"`
+	MoisturePreset string  `json:"moisture_preset,omitempty"`
 }
 
 // SourceDTO identifies the excitation point on the antenna structure.
@@ -300,6 +301,29 @@ func (r *SimulateRequest) Validate() error {
 		if w.Radius > segLen/2 {
 			return fmt.Errorf("wire %d: radius (%e m) too large relative to segment length (%e m); thin-wire approximation requires radius << segment length",
 				i, w.Radius, segLen)
+		}
+
+		// Dielectric coating validation. The solver already skips degenerate
+		// layers silently, but we reject nonsense values here so the user gets
+		// a clear error instead of a silently-ignored coating.
+		if w.CoatingThickness < 0 {
+			return fmt.Errorf("wire %d: coating_thickness must be non-negative, got %g", i, w.CoatingThickness)
+		}
+		if w.CoatingLossTan < 0 {
+			return fmt.Errorf("wire %d: coating_loss_tan must be non-negative, got %g", i, w.CoatingLossTan)
+		}
+		if w.CoatingThickness > 0 {
+			if w.CoatingEpsR < 1 {
+				return fmt.Errorf("wire %d: coating_eps_r must be >= 1 when coating_thickness > 0, got %g", i, w.CoatingEpsR)
+			}
+			// Same thin-wire argument as above: once the coated outer radius
+			// approaches the segment length the IS-card stamp sits on a kernel
+			// that no longer represents a filament of current.
+			coatedR := w.Radius + w.CoatingThickness
+			if coatedR > segLen/2 {
+				return fmt.Errorf("wire %d: coated outer radius (%e m) too large relative to segment length (%e m); thin-wire kernel requires coated radius << segment length",
+					i, coatedR, segLen)
+			}
 		}
 	}
 

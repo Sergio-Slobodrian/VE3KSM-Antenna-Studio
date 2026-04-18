@@ -3,6 +3,7 @@ package nec2
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 )
 
@@ -31,6 +32,8 @@ type GeometryWriteInput struct {
 	GroundType        string
 	Conductivity      float64
 	Permittivity      float64
+	MoisturePreset    string
+	Weather           WeatherRow
 }
 
 type WireRow struct {
@@ -39,6 +42,25 @@ type WireRow struct {
 	Radius     float64
 	Segments   int
 	Sigma      float64 // 0 = perfect / unspecified
+
+	// Dielectric coating fields from the MoM IS-card model. NEC-2 has no
+	// native equivalent, so Write collapses these into an effective radius
+	// (Tsai/Richmond lossless approximation) and preserves the originals as
+	// CM comment cards.  Zero thickness ⇒ bare wire and these fields are
+	// ignored.
+	CoatingThickness float64
+	CoatingEpsR      float64
+	CoatingLossTan   float64
+}
+
+// WeatherRow mirrors mom.WeatherConfig for the NEC-2 writer.  When
+// Thickness > 0 and EpsR ≥ 1 (after preset fallback) the writer adds the
+// weather film as an outer layer on every wire's effective-radius stack.
+type WeatherRow struct {
+	Preset    string
+	Thickness float64
+	EpsR      float64
+	LossTan   float64
 }
 
 type LoadRow struct {
@@ -60,10 +82,77 @@ type SourceRow struct {
 	Voltage      complex128
 }
 
+// weatherDefaults mirrors mom.weatherLayer for the writer so we don't
+// have to depend on the mom package.  Explicit εr/tanδ on the WeatherRow
+// override the preset values; a dry preset (or no preset) is inert.
+func weatherDefaults(preset string) (epsR, lossTan float64) {
+	switch preset {
+	case "rain":
+		return 80.0, 0.05
+	case "ice":
+		return 3.17, 0.001
+	case "wet_snow":
+		return 1.6, 0.005
+	}
+	return 0, 0
+}
+
+// effectiveRadius collapses a multi-layer dielectric stack into the
+// equivalent bare-wire radius using the lossless Tsai/Richmond formula:
+//
+//	ln(a_eff) = ln(a) + Σ_i (1 − 1/εr_i) · ln(b_i / b_{i−1})
+//
+// Layers are given inner-to-outer as (εr, outer radius) pairs.  The
+// approximation matches the real part of the IS-card per-unit-length
+// impedance in the quasi-TEM limit and reproduces the resonance shift /
+// velocity-factor change; it does not capture resistive loading from
+// lossy coatings (tanδ > 0), which must be reported as a warning.
+func effectiveRadius(a float64, layers [][2]float64) float64 {
+	if a <= 0 || len(layers) == 0 {
+		return a
+	}
+	lnAEff := math.Log(a)
+	prevR := a
+	for _, l := range layers {
+		eps, outer := l[0], l[1]
+		if eps < 1 || outer <= prevR {
+			continue
+		}
+		lnAEff += (1 - 1/eps) * math.Log(outer/prevR)
+		prevR = outer
+	}
+	return math.Exp(lnAEff)
+}
+
 // Write serialises a GeometryWriteInput to a NEC-2 deck.  The output
-// is free-format with one card per line.
-func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) error {
+// is free-format with one card per line.  The returned []string holds
+// non-fatal warnings (e.g. lossy coatings that NEC-2 cannot represent
+// exactly); the file itself is still valid and usable.
+func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) ([]string, error) {
 	var sb strings.Builder
+	var warnings []string
+
+	// Resolve the weather film once.  An explicit εr ≥ 1 on the
+	// WeatherRow overrides the preset default (matches the solver).
+	weatherEpsR, weatherLossTan := weatherDefaults(input.Weather.Preset)
+	if input.Weather.EpsR >= 1 {
+		weatherEpsR = input.Weather.EpsR
+		weatherLossTan = input.Weather.LossTan
+	}
+	hasWeather := input.Weather.Thickness > 0 && weatherEpsR >= 1
+
+	// Figure out whether any wire will be approximated so we can emit a
+	// single explanatory header instead of one per wire.
+	anyCoating := hasWeather
+	anyLossy := hasWeather && weatherLossTan > 0
+	for _, wire := range input.Wires {
+		if wire.CoatingThickness > 0 && wire.CoatingEpsR > 1 {
+			anyCoating = true
+			if wire.CoatingLossTan > 0 {
+				anyLossy = true
+			}
+		}
+	}
 
 	comments := opts.Comments
 	if len(comments) == 0 {
@@ -72,15 +161,61 @@ func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) error {
 	for _, c := range comments {
 		fmt.Fprintf(&sb, "CM %s\n", c)
 	}
+	if anyCoating {
+		fmt.Fprint(&sb, "CM Dielectric coatings approximated by effective radius\n")
+		fmt.Fprint(&sb, "CM   (Tsai/Richmond: ln(a_eff) = ln(a) + Σ (1 - 1/εr_i) ln(b_i/b_{i-1}))\n")
+		if anyLossy {
+			fmt.Fprint(&sb, "CM Warning: lossy coatings (tanδ > 0) cannot be represented in NEC-2;\n")
+			fmt.Fprint(&sb, "CM   resistive loading from tanδ is DROPPED in this export.\n")
+			warnings = append(warnings,
+				"Lossy dielectric coatings (tanδ > 0) cannot be represented in NEC-2; resistive loading has been dropped in the exported deck.")
+		}
+		if hasWeather {
+			fmt.Fprintf(&sb, "CM Weather: preset=%q thickness=%g m εr=%g tanδ=%g\n",
+				input.Weather.Preset, input.Weather.Thickness, weatherEpsR, weatherLossTan)
+		}
+		warnings = append(warnings,
+			"Dielectric coatings were approximated by an effective wire radius. Use NEC-4 or the in-app solver for full fidelity.")
+	}
 	fmt.Fprint(&sb, "CE\n")
 
 	for i, wire := range input.Wires {
 		tag := i + 1
+		radius := wire.Radius
+
+		// Build the concentric layer stack (inner → outer): wire coating
+		// first, weather film on top.  Empty ⇒ bare wire and we use the
+		// conductor radius unchanged.
+		var layers [][2]float64
+		curR := wire.Radius
+		if wire.CoatingThickness > 0 && wire.CoatingEpsR > 1 {
+			curR += wire.CoatingThickness
+			layers = append(layers, [2]float64{wire.CoatingEpsR, curR})
+		}
+		if hasWeather {
+			layers = append(layers, [2]float64{weatherEpsR, curR + input.Weather.Thickness})
+		}
+
+		if len(layers) > 0 {
+			radius = effectiveRadius(wire.Radius, layers)
+			// One CM card per coated wire so the original physical
+			// parameters survive the round-trip as documentation.
+			if wire.CoatingThickness > 0 && wire.CoatingEpsR > 1 {
+				fmt.Fprintf(&sb,
+					"CM wire %d coating: thickness=%g m εr=%g tanδ=%g; a=%g m → a_eff=%g m\n",
+					tag, wire.CoatingThickness, wire.CoatingEpsR, wire.CoatingLossTan,
+					wire.Radius, radius)
+			} else if hasWeather {
+				fmt.Fprintf(&sb, "CM wire %d weather film: a=%g m → a_eff=%g m\n",
+					tag, wire.Radius, radius)
+			}
+		}
+
 		fmt.Fprintf(&sb, "GW %d %d %g %g %g %g %g %g %g\n",
 			tag, wire.Segments,
 			wire.X1, wire.Y1, wire.Z1,
 			wire.X2, wire.Y2, wire.Z2,
-			wire.Radius)
+			radius)
 	}
 
 	geFlag := 0
@@ -133,6 +268,9 @@ func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) error {
 	}
 
 	if input.GroundType == "real" {
+		if mp := input.MoisturePreset; mp != "" && mp != "custom" {
+			fmt.Fprintf(&sb, "CM Ground moisture preset: %s\n", mp)
+		}
 		fmt.Fprintf(&sb, "GN 2 0 0 0 %g %g\n", input.Permittivity, input.Conductivity)
 	}
 
@@ -150,5 +288,5 @@ func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) error {
 
 	fmt.Fprint(&sb, "EN\n")
 	_, err := io.WriteString(w, sb.String())
-	return err
+	return warnings, err
 }

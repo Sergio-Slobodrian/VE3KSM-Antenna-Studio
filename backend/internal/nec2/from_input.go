@@ -7,13 +7,20 @@ import "antenna-studio/backend/internal/mom"
 // conductivity values via the MoM material library.
 func FromInput(in mom.SimulationInput) GeometryWriteInput {
 	out := GeometryWriteInput{
-		GroundType:   in.Ground.Type,
-		Conductivity: in.Ground.Conductivity,
-		Permittivity: in.Ground.Permittivity,
+		GroundType:     in.Ground.Type,
+		Conductivity:   in.Ground.Conductivity,
+		Permittivity:   in.Ground.Permittivity,
+		MoisturePreset: in.Ground.MoisturePreset,
 		Source: SourceRow{
 			WireIndex:    in.Source.WireIndex,
 			SegmentIndex: in.Source.SegmentIndex,
 			Voltage:      in.Source.Voltage,
+		},
+		Weather: WeatherRow{
+			Preset:    in.Weather.Preset,
+			Thickness: in.Weather.Thickness,
+			EpsR:      in.Weather.EpsR,
+			LossTan:   in.Weather.LossTan,
 		},
 	}
 
@@ -22,6 +29,9 @@ func FromInput(in mom.SimulationInput) GeometryWriteInput {
 			X1: w.X1, Y1: w.Y1, Z1: w.Z1,
 			X2: w.X2, Y2: w.Y2, Z2: w.Z2,
 			Radius: w.Radius, Segments: w.Segments,
+			CoatingThickness: w.CoatingThickness,
+			CoatingEpsR:      w.CoatingEpsR,
+			CoatingLossTan:   w.CoatingLossTan,
 		}
 		if w.Material != "" && w.Material != mom.MaterialPEC {
 			if m, ok := mom.LookupMaterial(w.Material); ok {

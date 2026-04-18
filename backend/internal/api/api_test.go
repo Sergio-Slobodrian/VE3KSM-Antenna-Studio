@@ -102,6 +102,105 @@ func TestValidate_EmptyGroundDefaultsToFreeSpace(t *testing.T) {
 	}
 }
 
+// --- Coating validation ---
+
+func TestValidate_CoatingNegativeThickness(t *testing.T) {
+	r := validRequest()
+	r.Wires[0].CoatingThickness = -1e-3
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for negative coating_thickness")
+	}
+}
+
+func TestValidate_CoatingNegativeLossTan(t *testing.T) {
+	r := validRequest()
+	r.Wires[0].CoatingLossTan = -0.01
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for negative coating_loss_tan")
+	}
+}
+
+func TestValidate_CoatingEpsRBelowOneWithThickness(t *testing.T) {
+	r := validRequest()
+	r.Wires[0].CoatingThickness = 1e-3
+	r.Wires[0].CoatingEpsR = 0.5
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for coating_eps_r < 1 with non-zero thickness")
+	}
+}
+
+func TestValidate_CoatingEpsRBelowOneNoThicknessAllowed(t *testing.T) {
+	// εr < 1 with zero thickness is harmless (solver skips the layer) and
+	// must not be rejected, otherwise preset-switching UIs break.
+	r := validRequest()
+	r.Wires[0].CoatingThickness = 0
+	r.Wires[0].CoatingEpsR = 0
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected error for εr=0 with zero thickness: %v", err)
+	}
+}
+
+func TestValidate_CoatingOversizeBreaksThinWire(t *testing.T) {
+	// 1 m wire / 11 segments ⇒ segLen ≈ 9.09 cm ⇒ segLen/2 ≈ 4.55 cm.
+	// Coated outer radius 5 cm (1 mm conductor + 49 mm coating) must fail.
+	r := validRequest()
+	r.Wires[0].CoatingThickness = 0.049
+	r.Wires[0].CoatingEpsR = 2.3
+	if err := r.Validate(); err == nil {
+		t.Fatal("expected error for coated outer radius exceeding segLen/2")
+	}
+}
+
+func TestValidate_CoatingValid(t *testing.T) {
+	r := validRequest()
+	r.Wires[0].CoatingThickness = 2e-3
+	r.Wires[0].CoatingEpsR = 2.3
+	r.Wires[0].CoatingLossTan = 0.01
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected error for valid coating: %v", err)
+	}
+}
+
+// --- Ground moisture preset round-trip ---
+
+// TestGroundMoisturePreset_RoundTrip verifies that MoisturePreset on the DTO
+// survives validation and is forwarded verbatim onto mom.SimulationInput along
+// with εr/σ — the solver only reads εr/σ, so the preset must not mutate them.
+func TestGroundMoisturePreset_RoundTrip(t *testing.T) {
+	r := validRequest()
+	r.Ground = GroundDTO{
+		Type:           "real",
+		Conductivity:   0.02,
+		Permittivity:   30,
+		MoisturePreset: "wet",
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	in := simulateRequestToInput(r)
+	if in.Ground.MoisturePreset != "wet" {
+		t.Fatalf("moisture preset lost: got %q, want %q", in.Ground.MoisturePreset, "wet")
+	}
+	if in.Ground.Permittivity != 30 || in.Ground.Conductivity != 0.02 {
+		t.Fatalf("εr/σ altered by preset: got εr=%v σ=%v, want 30/0.02",
+			in.Ground.Permittivity, in.Ground.Conductivity)
+	}
+}
+
+// TestGroundMoisturePreset_EmptyIsValid verifies that omitting the preset
+// (legacy clients + "custom" default) passes validation unchanged.
+func TestGroundMoisturePreset_EmptyIsValid(t *testing.T) {
+	r := validRequest()
+	r.Ground = GroundDTO{Type: "real", Conductivity: 0.005, Permittivity: 13}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error with empty preset: %v", err)
+	}
+	in := simulateRequestToInput(r)
+	if in.Ground.MoisturePreset != "" {
+		t.Fatalf("expected empty preset, got %q", in.Ground.MoisturePreset)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // SweepRequest.ToSimulateRequest()
 // ---------------------------------------------------------------------------

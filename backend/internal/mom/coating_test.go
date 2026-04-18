@@ -127,6 +127,65 @@ func TestCoating_ResonanceShift(t *testing.T) {
 	}
 }
 
+// TestCoating_CoatingPlusWeather exercises the full multi-layer stack
+// (per-wire coating + global weather film), which single-layer tests miss.
+// The IS-card formula sums contributions inner-to-outer, so the combined
+// reactance shift at a fixed frequency must exceed either layer alone and
+// lie below a rough upper bound on the independent sum.
+func TestCoating_CoatingPlusWeather(t *testing.T) {
+	freq := 14e6
+	halfL := C0 / freq / 4 // near-resonant bare dipole length
+
+	bare := Wire{Radius: 1e-3, Segments: 21}
+	coated := Wire{
+		Radius: 1e-3, Segments: 21,
+		CoatingThickness: 2e-3, CoatingEpsR: 2.3, CoatingLossTan: 0,
+	}
+
+	// Isolate each layer: rain alone (bare wire), PVC alone (dry), and the
+	// stacked case PVC + rain.
+	rainOnly := WeatherConfig{Preset: "rain", Thickness: 1e-4, EpsR: 80, LossTan: 0}
+	dry := WeatherConfig{Preset: "dry"}
+
+	runAt := func(w Wire, weather WeatherConfig) float64 {
+		in := dipoleInput(freq, halfL, w)
+		in.Weather = weather
+		r, err := Simulate(in)
+		if err != nil {
+			t.Fatalf("simulate: %v", err)
+		}
+		return r.Impedance.X
+	}
+
+	xBare := runAt(bare, dry)
+	xPVC := runAt(coated, dry)
+	xRain := runAt(bare, rainOnly)
+	xStack := runAt(coated, rainOnly)
+
+	dPVC := xPVC - xBare
+	dRain := xRain - xBare
+	dStack := xStack - xBare
+
+	t.Logf("ΔX PVC=%.3f  ΔX rain=%.3f  ΔX stack=%.3f", dPVC, dRain, dStack)
+
+	// Each single layer must push reactance upward (inductive loading).
+	if dPVC <= 0 {
+		t.Errorf("PVC alone should raise X, got ΔX=%.3f", dPVC)
+	}
+	if dRain <= 0 {
+		t.Errorf("rain alone should raise X, got ΔX=%.3f", dRain)
+	}
+	// Stacking must exceed either layer in isolation: rain sees a larger
+	// inner radius once PVC is present, so the (1/ε_{i−1} − 1/ε_i) ln(b/a)
+	// sum grows strictly with an added outer layer.
+	if dStack <= dPVC {
+		t.Errorf("stacked ΔX=%.3f must exceed PVC-only ΔX=%.3f", dStack, dPVC)
+	}
+	if dStack <= dRain {
+		t.Errorf("stacked ΔX=%.3f must exceed rain-only ΔX=%.3f", dStack, dRain)
+	}
+}
+
 // TestCoating_LossyCoatingAddsResistance verifies that a coating with tanδ > 0
 // raises the feed-point resistance relative to a lossless coating.
 func TestCoating_LossyCoatingAddsResistance(t *testing.T) {

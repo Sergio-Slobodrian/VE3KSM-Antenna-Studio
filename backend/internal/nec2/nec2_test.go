@@ -357,6 +357,47 @@ func TestWrite_GroundMoisturePreset(t *testing.T) {
 	}
 }
 
+// TestWrite_GroundRegionPreset verifies the writer emits a CM card
+// documenting the region preset (from the map picker) when it is set,
+// and omits the CM when empty.
+func TestWrite_GroundRegionPreset(t *testing.T) {
+	base := mom.SimulationInput{
+		Wires: []mom.Wire{{
+			X1: 0, Y1: -5, Z1: 1, X2: 0, Y2: 5, Z2: 1,
+			Radius: 0.001, Segments: 11,
+		}},
+		Source: mom.Source{WireIndex: 0, SegmentIndex: 5, Voltage: 1 + 0i},
+		Ground: mom.GroundConfig{
+			Type:         "real",
+			Conductivity: 0.01,
+			Permittivity: 15,
+			RegionPreset: "itu:3",
+		},
+	}
+
+	var buf bytes.Buffer
+	if _, err := Write(&buf, FromInput(base), WriteOptions{FreqStartMHz: 14, FreqSteps: 1}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "CM Ground region preset: itu:3") {
+		t.Errorf("missing region-preset CM card:\n%s", out)
+	}
+	if !strings.Contains(out, "GN 2 0 0 0 15") {
+		t.Errorf("GN card should carry εr=15 unchanged:\n%s", out)
+	}
+
+	// Empty preset must not emit a CM card.
+	base.Ground.RegionPreset = ""
+	buf.Reset()
+	if _, err := Write(&buf, FromInput(base), WriteOptions{FreqStartMHz: 14, FreqSteps: 1}); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if strings.Contains(buf.String(), "Ground region preset") {
+		t.Errorf("empty preset should not emit CM card:\n%s", buf.String())
+	}
+}
+
 // TestWrite_MultilayerEffectiveRadius confirms that coating + weather
 // stack inner-to-outer and produce a larger effective radius than coating
 // alone.

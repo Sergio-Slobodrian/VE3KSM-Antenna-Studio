@@ -11,6 +11,7 @@ func FromInput(in mom.SimulationInput) GeometryWriteInput {
 		Conductivity:   in.Ground.Conductivity,
 		Permittivity:   in.Ground.Permittivity,
 		MoisturePreset: in.Ground.MoisturePreset,
+		RegionPreset:   in.Ground.RegionPreset,
 		Source: SourceRow{
 			WireIndex:    in.Source.WireIndex,
 			SegmentIndex: in.Source.SegmentIndex,

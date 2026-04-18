@@ -86,6 +86,7 @@ function buildGround(ground: GroundConfig) {
     conductivity: number;
     permittivity: number;
     moisture_preset?: string;
+    region_preset?: string;
   } = {
     type: ground.type,
     conductivity: ground.conductivity,
@@ -93,6 +94,9 @@ function buildGround(ground: GroundConfig) {
   };
   if (ground.moisturePreset && ground.moisturePreset !== 'custom') {
     out.moisture_preset = ground.moisturePreset;
+  }
+  if (ground.regionPreset) {
+    out.region_preset = ground.regionPreset;
   }
   return out;
 }
@@ -417,6 +421,7 @@ export async function generateTemplate(
     conductivity: (grnd?.conductivity as number) || 0.005,
     permittivity: (grnd?.permittivity as number) || 13,
     moisturePreset: (grnd?.moisture_preset as GroundConfig['moisturePreset']) || 'custom',
+    regionPreset: (grnd?.region_preset as string) || '',
   };
 
   return { wires, source, ground };

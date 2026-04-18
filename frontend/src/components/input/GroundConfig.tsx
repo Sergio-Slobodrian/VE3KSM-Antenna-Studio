@@ -10,17 +10,20 @@
  * behaviour).  Users may hand-edit εr/σ after picking a preset — the preset
  * label sticks, matching the WeatherPanel preset-with-override pattern.
  */
-import React from 'react';
+import React, { useState } from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
 import NumericInput from '@/components/common/NumericInput';
+import RegionMapPicker from '@/components/input/RegionMapPicker';
 import {
   SOIL_MOISTURE_PRESETS,
+  ITU_P832_ZONES,
   type GroundConfig as GroundConfigType,
   type SoilMoisturePreset,
 } from '@/types';
 
 const GroundConfig: React.FC = () => {
   const { ground, setGround } = useAntennaStore();
+  const [mapOpen, setMapOpen] = useState(false);
 
   const groundTypes: { value: GroundConfigType['type']; label: string }[] = [
     { value: 'free_space', label: 'Free Space' },
@@ -43,15 +46,33 @@ const GroundConfig: React.FC = () => {
   };
 
   const isRealGround = ground.type === 'real';
-  const presetActive = isRealGround && ground.moisturePreset !== 'custom';
+  const moistureActive = isRealGround && ground.moisturePreset !== 'custom';
+  const regionActive = isRealGround && !!ground.regionPreset;
+  const headerActive = moistureActive || regionActive;
+
+  // Look up the human-readable label for whatever region preset is set.
+  const regionLabel = (() => {
+    const rp = ground.regionPreset;
+    if (!rp) return '';
+    if (rp.startsWith('itu:')) {
+      const zone = Number(rp.slice(4));
+      return ITU_P832_ZONES.find((z) => z.zone === zone)?.label ?? `ITU zone ${zone}`;
+    }
+    // user:<uuid> — we don't have the friendly name cached here; show a
+    // neutral label so the user can tell that *something* is applied.
+    return 'User region';
+  })();
+
+  const moistureLabel = moistureActive
+    ? SOIL_MOISTURE_PRESETS.find((p) => p.key === ground.moisturePreset)?.label ?? ''
+    : '';
+
+  const headerSuffix = [regionLabel, moistureLabel].filter(Boolean).join(' · ');
 
   return (
     <div className="config-section">
-      <h3 style={presetActive ? { color: 'var(--accent)' } : undefined}>
-        Ground
-        {presetActive
-          ? ` — ${SOIL_MOISTURE_PRESETS.find((p) => p.key === ground.moisturePreset)?.label ?? ''}`
-          : ''}
+      <h3 style={headerActive ? { color: 'var(--accent)' } : undefined}>
+        Ground{headerSuffix ? ` — ${headerSuffix}` : ''}
       </h3>
       <div className="config-row">
         <label>Type</label>
@@ -85,6 +106,27 @@ const GroundConfig: React.FC = () => {
             </select>
           </div>
           <div className="config-row">
+            <label>Region</label>
+            <button
+              type="button"
+              className="ground-map-btn"
+              onClick={() => setMapOpen(true)}
+              title="Open the interactive world-map picker"
+            >
+              {regionActive ? `${regionLabel} — change…` : 'Pick on map…'}
+            </button>
+            {regionActive && (
+              <button
+                type="button"
+                className="ground-map-btn"
+                onClick={() => setGround({ regionPreset: '' })}
+                title="Clear the region label (leaves εr/σ untouched)"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <div className="config-row">
             <NumericInput
               label="Conductivity (S/m)"
               value={ground.conductivity}
@@ -104,6 +146,22 @@ const GroundConfig: React.FC = () => {
           </div>
         </>
       )}
+      <RegionMapPicker
+        open={mapOpen}
+        onClose={() => setMapOpen(false)}
+        onApply={({ epsR, sigma, regionPreset }) => {
+          // Picking a region sets εr/σ directly; moisturePreset collapses to
+          // 'custom' so the header only shows the region label (avoids
+          // confusing double-labeling).
+          setGround({
+            type: 'real',
+            permittivity: epsR,
+            conductivity: sigma,
+            regionPreset,
+            moisturePreset: 'custom',
+          });
+        }}
+      />
     </div>
   );
 };

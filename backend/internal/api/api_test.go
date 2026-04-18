@@ -201,6 +201,67 @@ func TestGroundMoisturePreset_EmptyIsValid(t *testing.T) {
 	}
 }
 
+// --- Ground region preset (map picker) round-trip ---
+
+// TestGroundRegionPreset_RoundTrip verifies that RegionPreset on the DTO
+// survives validation and is forwarded verbatim onto mom.SimulationInput.
+// The solver only reads εr/σ, so the preset label must not mutate them.
+func TestGroundRegionPreset_RoundTrip(t *testing.T) {
+	r := validRequest()
+	r.Ground = GroundDTO{
+		Type:         "real",
+		Conductivity: 0.01,
+		Permittivity: 15,
+		RegionPreset: "itu:3",
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	in := simulateRequestToInput(r)
+	if in.Ground.RegionPreset != "itu:3" {
+		t.Fatalf("region preset lost: got %q, want %q", in.Ground.RegionPreset, "itu:3")
+	}
+	if in.Ground.Permittivity != 15 || in.Ground.Conductivity != 0.01 {
+		t.Fatalf("εr/σ altered by region preset: got εr=%v σ=%v, want 15/0.01",
+			in.Ground.Permittivity, in.Ground.Conductivity)
+	}
+}
+
+// TestGroundRegionPreset_EmptyIsValid verifies that legacy clients that omit
+// RegionPreset entirely still validate and round-trip unchanged.
+func TestGroundRegionPreset_EmptyIsValid(t *testing.T) {
+	r := validRequest()
+	r.Ground = GroundDTO{Type: "real", Conductivity: 0.005, Permittivity: 13}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error with empty region preset: %v", err)
+	}
+	in := simulateRequestToInput(r)
+	if in.Ground.RegionPreset != "" {
+		t.Fatalf("expected empty region preset, got %q", in.Ground.RegionPreset)
+	}
+}
+
+// TestGroundRegionPreset_CoexistsWithMoisture verifies that a user can have
+// both a moisture label AND a region label attached to the same ground config.
+func TestGroundRegionPreset_CoexistsWithMoisture(t *testing.T) {
+	r := validRequest()
+	r.Ground = GroundDTO{
+		Type:           "real",
+		Conductivity:   0.02,
+		Permittivity:   30,
+		MoisturePreset: "wet",
+		RegionPreset:   "user:abc-123",
+	}
+	if err := r.Validate(); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	in := simulateRequestToInput(r)
+	if in.Ground.MoisturePreset != "wet" || in.Ground.RegionPreset != "user:abc-123" {
+		t.Fatalf("labels lost on round-trip: moisture=%q region=%q",
+			in.Ground.MoisturePreset, in.Ground.RegionPreset)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // SweepRequest.ToSimulateRequest()
 // ---------------------------------------------------------------------------

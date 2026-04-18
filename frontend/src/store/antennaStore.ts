@@ -147,6 +147,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     conductivity: 0.005,
     permittivity: 13,
     moisturePreset: 'custom',
+    regionPreset: '',
   },
   frequency: {
     mode: 'single',
@@ -275,7 +276,11 @@ export const useAntennaStore = create<AntennaState>((set) => ({
         coatingLossTan: w.coatingLossTan ?? 0,
       })),
       source: data.source,
-      ground: { ...data.ground, moisturePreset: data.ground.moisturePreset ?? 'custom' },
+      ground: {
+        ...data.ground,
+        moisturePreset: data.ground.moisturePreset ?? 'custom',
+        regionPreset: data.ground.regionPreset ?? '',
+      },
       loads: [],
   transmissionLines: [],
       selectedWireId: data.wires.length > 0 ? data.wires[0].id : null,

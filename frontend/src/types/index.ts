@@ -102,12 +102,16 @@ export interface TransmissionLine {
 /** Ground-plane configuration.
  *  'free_space' = no ground; 'perfect' = PEC ground at Z=0;
  *  'real' = lossy ground characterised by conductivity (S/m) and relative permittivity.
+ *  `regionPreset` is a label-only string set by the map picker (e.g. "itu:3"
+ *  or "user:<uuid>"); empty when the user hasn't picked a region. εr/σ remain
+ *  the authoritative numeric inputs — the label just survives round-trip.
  */
 export interface GroundConfig {
   type: 'free_space' | 'perfect' | 'real';
   conductivity: number;
   permittivity: number;
   moisturePreset: SoilMoisturePreset;
+  regionPreset: string;
 }
 
 /** Soil moisture preset for the real-ground model.
@@ -142,6 +146,37 @@ export const SOIL_MOISTURE_PRESETS: SoilMoisturePresetDef[] = [
   { key: 'very_wet',   label: 'Very wet',          epsR: 40, sigma: 0.050 },
   { key: 'salt_marsh', label: 'Salt marsh',        epsR: 30, sigma: 1.0   },
   { key: 'sea_water',  label: 'Sea water',         epsR: 80, sigma: 5.0   },
+];
+
+/** One clickable region on the world-map ground picker.
+ *  `polygon` is a closed ring in WGS84 [lon, lat] degrees.
+ *  `source` distinguishes bundled ITU-R P.832 zones from user-drawn polygons. */
+export interface GroundRegion {
+  id: string;
+  name: string;
+  source: 'itu' | 'user';
+  zone?: number;           // ITU-R P.832 zone number 1-6 (for bundled regions)
+  polygon: [number, number][];
+  epsR: number;
+  sigma: number; // S/m
+}
+
+/** ITU-R P.832 conductivity zone definition (six standard classes). */
+export interface ItuZoneDef {
+  zone: number;
+  label: string;
+  epsR: number;
+  sigma: number;
+  colour: string; // hex fill for the map
+}
+
+export const ITU_P832_ZONES: ItuZoneDef[] = [
+  { zone: 1, label: 'Sea water',        epsR: 80,  sigma: 5.0,    colour: '#1b3a6b' },
+  { zone: 2, label: 'Very good ground', epsR: 30,  sigma: 0.03,   colour: '#2d7a4f' },
+  { zone: 3, label: 'Good ground',      epsR: 15,  sigma: 0.01,   colour: '#6aa84f' },
+  { zone: 4, label: 'Moderate ground',  epsR: 15,  sigma: 0.003,  colour: '#c6a34a' },
+  { zone: 5, label: 'Poor ground',      epsR: 7,   sigma: 0.001,  colour: '#c67f3a' },
+  { zone: 6, label: 'Very poor / ice',  epsR: 3,   sigma: 0.0001, colour: '#dcdce0' },
 ];
 
 /** Sweep solver mode: 'auto' picks interpolated when steps > 32. */

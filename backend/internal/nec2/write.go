@@ -33,6 +33,7 @@ type GeometryWriteInput struct {
 	Conductivity      float64
 	Permittivity      float64
 	MoisturePreset    string
+	RegionPreset      string
 	Weather           WeatherRow
 }
 
@@ -270,6 +271,9 @@ func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) ([]string, 
 	if input.GroundType == "real" {
 		if mp := input.MoisturePreset; mp != "" && mp != "custom" {
 			fmt.Fprintf(&sb, "CM Ground moisture preset: %s\n", mp)
+		}
+		if rp := input.RegionPreset; rp != "" {
+			fmt.Fprintf(&sb, "CM Ground region preset: %s\n", rp)
 		}
 		fmt.Fprintf(&sb, "GN 2 0 0 0 %g %g\n", input.Permittivity, input.Conductivity)
 	}

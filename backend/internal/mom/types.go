@@ -114,6 +114,7 @@ type GroundConfig struct {
 	Conductivity   float64 `json:"conductivity"`              // ground conductivity in S/m (only for "real")
 	Permittivity   float64 `json:"permittivity"`              // relative permittivity (only for "real")
 	MoisturePreset string  `json:"moisture_preset,omitempty"` // label only ("custom" or soil category); εr/σ remain authoritative
+	RegionPreset   string  `json:"region_preset,omitempty"`   // label only (e.g. "itu:3", "user:<uuid>"); εr/σ remain authoritative
 }
 
 // Source describes the voltage excitation applied to the antenna.

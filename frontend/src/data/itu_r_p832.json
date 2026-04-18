@@ -1,0 +1,97 @@
+{
+  "type": "FeatureCollection",
+  "_note": "BOOTSTRAP PLACEHOLDER. Three zones only — a world-size sea rectangle, five extremely-coarse continent hulls classed as 'Good ground', and Greenland + Antarctica classed as 'Very poor / ice'. Continent shapes are hand-traced at ~10 vertices each so the file stays small and recognisable as a world map; they overstep real coastlines (Caribbean, Mediterranean, Indonesian waters are flagged as land). Replace with a proper simplified ITU-R P.832 atlas conversion when available. The smallest-polygon-wins lookup rule means user-drawn polygons refine whatever zone is underneath them.",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-sea", "name": "Sea water", "zone": 1 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-na", "name": "North America", "zone": 3 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-168, 66], [-140, 70], [-95, 75], [-62, 60], [-55, 46],
+          [-75, 30], [-85, 20], [-108, 16], [-118, 30], [-125, 48],
+          [-155, 60], [-168, 66]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-sa", "name": "South America", "zone": 3 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-80, 12], [-60, 8], [-50, 0], [-35, -8], [-38, -25],
+          [-55, -40], [-72, -55], [-75, -45], [-70, -20], [-80, 0],
+          [-80, 12]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-af", "name": "Africa", "zone": 3 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-18, 20], [-5, 35], [20, 35], [35, 32], [45, 12], [51, 11],
+          [42, -5], [40, -15], [35, -35], [18, -35], [8, -5], [-10, 5],
+          [-18, 20]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-eu", "name": "Eurasia", "zone": 3 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-10, 36], [-10, 60], [30, 72], [80, 80], [140, 75],
+          [180, 68], [170, 55], [140, 40], [120, 25], [105, 10],
+          [95, 5], [80, 8], [70, 20], [55, 25], [40, 13], [30, 40],
+          [-10, 36]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-au", "name": "Australia", "zone": 3 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [112, -12], [140, -10], [155, -22], [150, -38], [130, -35],
+          [115, -35], [112, -22], [112, -12]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-gl", "name": "Greenland", "zone": 6 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-60, 60], [-45, 60], [-25, 70], [-18, 80], [-45, 83],
+          [-62, 78], [-60, 60]
+        ]]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": { "id": "itu-an", "name": "Antarctica", "zone": 6 },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-180, -65], [180, -65], [180, -85], [-180, -85], [-180, -65]
+        ]]
+      }
+    }
+  ]
+}

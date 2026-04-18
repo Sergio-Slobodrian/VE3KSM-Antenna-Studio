@@ -918,3 +918,304 @@ select {
 .match-cores-table td {
   padding: 1px 5px;
 }
+
+/* ========== Region map picker (modal) ========== */
+.region-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.region-modal {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  width: min(1200px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.region-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+.region-modal-header h3 {
+  margin: 0;
+  color: var(--accent);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.region-mode-tabs {
+  display: flex;
+  gap: 4px;
+}
+.region-mode-tabs button {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.region-mode-tabs button.tab-active {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+.region-zoom-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+.region-zoom-controls button {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 2px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  border-radius: 3px;
+  min-width: 28px;
+}
+.region-zoom-controls span {
+  color: var(--text-secondary);
+  font-size: 12px;
+  min-width: 42px;
+  text-align: center;
+}
+.region-modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.region-modal-close:hover {
+  color: var(--text-primary);
+}
+.region-modal-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.region-map-wrapper {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  background: #0a0a1e;
+  min-width: 0;
+}
+.region-map {
+  width: 100%;
+  height: auto;
+  flex: 1 1 auto;
+  display: block;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.region-map.drawing {
+  cursor: crosshair;
+}
+.region-ocean-bg {
+  fill: #0c1b33;
+}
+.region-map-hint {
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+}
+.region-sidebar {
+  width: 280px;
+  flex: 0 0 280px;
+  border-left: 1px solid var(--border);
+  padding: 12px;
+  overflow-y: auto;
+  background: var(--bg-panel);
+}
+.region-sidebar section + section {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.region-sidebar h4 {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.region-sidebar .muted.small {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0 0 6px;
+}
+.region-values {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  margin-bottom: 6px;
+}
+.region-apply-btn {
+  width: 100%;
+  padding: 6px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.region-apply-btn:disabled {
+  background: var(--bg-input);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+.region-zone-legend {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.region-zone-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.region-zone-legend .swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.region-user-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.region-user-list li {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.region-user-row {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.region-user-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 2px 4px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 11px;
+}
+.region-user-row button {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px 6px;
+  font-size: 11px;
+  border-radius: 2px;
+}
+.region-user-values {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+.region-user-values label {
+  flex: 1 1 auto;
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.region-user-values input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 2px 4px;
+  font-size: 11px;
+}
+.region-draft-form {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.region-draft-form strong {
+  color: var(--accent);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-right: 8px;
+}
+.region-draft-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.region-draft-form input {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+.region-draft-form button {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 3px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.region-draft-form button:last-child {
+  background: var(--bg-input);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+.ground-map-btn {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ground-map-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}

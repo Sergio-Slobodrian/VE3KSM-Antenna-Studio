@@ -219,6 +219,8 @@ The 3D canvas in the left panel gives a visual preview of your antenna geometry 
 
 The feed wire (the wire containing the voltage source) is drawn in a distinct color to distinguish it visually.
 
+![3D Wire Editor](Media/3DEditor.png)
+
 ### 4.4 Setting the Voltage Source
 
 There is one excitation port per simulation.
@@ -277,6 +279,8 @@ To refine coverage with a custom area:
 User-drawn polygons are saved in browser `localStorage` and survive page reloads. When regions overlap, the smallest containing polygon wins — your custom areas naturally override the base ITU zones.
 
 Use **↓ Export** to download your polygon set as a JSON file, and **↑ Import** to load it in another browser. Importing always assigns new IDs so the same file can be imported twice without silent overwrites.
+
+![Ground Region Map Picker](Media/RegionPicker.png)
 
 ### 4.6 Adding Lumped Loads
 
@@ -406,6 +410,10 @@ The **Pattern 3D** tab shows the antenna's far-field radiation pattern as a 3D s
 
 The **Metrics Panel** (visible below or alongside the pattern) lists: directivity, gain, efficiency, front-to-back ratio, 3 dB beamwidth (E/H plane), and sidelobe level.
 
+![3D Radiation Pattern](Media/3DPattern.png)
+
+![Pattern Metrics Panel](Media/Metrics.png)
+
 ### 6.3 2D Polar Cuts
 
 The **Polar Cut** tab plots a 2D slice of the 3D pattern.
@@ -417,7 +425,11 @@ Controls:
 
 The outer circle represents the peak gain level. A gray reference circle at 0 dBi is drawn for quick absolute reference. Gain values below −30 dB relative to the peak are truncated.
 
+![Azimuth Polar Cut](Media/PolarCutsAzimuth.png)
+
 **Elevation cut — full 360° display:** The elevation polar plot shows both the front lobe (at the peak azimuth angle φ) and the back lobe (at φ + 180°) on the same circle. The right half of the plot is the front side; the left half is the back side. This makes the front-to-back ratio immediately visible and reveals whether the antenna has significant rearward radiation. Spoke labels run 0°–315° at 45° intervals.
+
+![Elevation Polar Cut](Media/PolarCutsElevation.png)
 
 ### 6.4 SWR Chart
 
@@ -430,6 +442,8 @@ The **SWR** tab plots Standing Wave Ratio vs. frequency across the sweep range.
 
 **What to look for:** A SWR < 2.0 over your operating band means the antenna can be fed directly with a 50 Ω coaxial cable and a typical transceiver without a tuner.
 
+![SWR Chart](Media/SWR.png)
+
 ### 6.5 Impedance Chart
 
 The **Impedance** tab plots R (resistance) and X (reactance) vs. frequency on dual Y-axes.
@@ -439,6 +453,8 @@ The **Impedance** tab plots R (resistance) and X (reactance) vs. frequency on du
 - A horizontal dashed line marks X = 0 (resonance)
 
 **What to look for:** At resonance X crosses zero and R is the radiation resistance. For a half-wave dipole in free space, R ≈ 73 Ω at resonance.
+
+![Impedance Chart](Media/Impedance.png)
 
 ### 6.6 Segment Current Distribution
 
@@ -450,6 +466,8 @@ The **Currents** tab shows the current magnitude and phase at every MoM segment 
 
 **What to look for:** The current should peak at or near the feed segment and fall off symmetrically toward the wire ends for a simple dipole. Lumped loads should show visible current discontinuities at the load location.
 
+![Segment Current Distribution](Media/Currents.png)
+
 ### 6.7 Smith Chart
 
 The **Smith Chart** tab plots the normalized impedance locus across the sweep.
@@ -459,6 +477,8 @@ The **Smith Chart** tab plots the normalized impedance locus across the sweep.
 - The center of the chart (R = 1, X = 0 normalized) represents a perfect 50 Ω match.
 
 Use the Smith chart to design matching networks: a capacitive shunt or series inductor rotates the locus toward the chart center.
+
+![Smith Chart](Media/Smith.png)
 
 ### 6.8 Near-Field Viewer
 
@@ -478,6 +498,8 @@ Click **Compute Near Field** to run the calculation. The result is shown as a co
 
 **Typical use:** Compute the E-field in the XZ plane close to a base-fed vertical to verify a null at the feed point, or compute radiation directly above a ground-mounted antenna.
 
+![Near-Field Viewer](Media/Near-Field.png)
+
 ### 6.9 Polarization Viewer
 
 The **Polarization** tab shows the E-field polarization at a selected far-field direction (θ, φ).
@@ -487,6 +509,8 @@ The **Polarization** tab shows the E-field polarization at a selected far-field 
 - **Circular polarization (CP)** — axial ratio = 0 dB (1:1); used for satellite work.
 
 The polarization ellipse is drawn on a unit circle. Left- and right-hand circular components are decomposed.
+
+![Polarization Viewer](Media/Polarization.png)
 
 ---
 
@@ -522,6 +546,8 @@ After a simulation, go to the **Matching** tab to synthesize a lumped-element ne
 - Use the Pi-network when you need to set the operating Q independently of the impedance ratio.
 - For an X ≠ 0 load, the tool adds a series compensation reactance as part of the design.
 
+![Impedance Matching Networks](Media/Matching.png)
+
 ---
 
 ## 8. Advanced Analysis Tools
@@ -543,6 +569,8 @@ After a simulation, go to the **Matching** tab to synthesize a lumped-element ne
 - **Radiation Q** per mode (lower = broader bandwidth).
 
 **Practical use:** CMA is essential for designing multi-band antennas (identify modes that resonate at each band), MIMO antennas (ensure orthogonal modal currents), and electrically small antennas (find the best excitation position for a given mode).
+
+![Characteristic Mode Analysis](Media/CMA.png)
 
 ### 8.2 Single-Objective Optimizer
 
@@ -566,6 +594,8 @@ The optimizer automatically varies wire dimensions or component values to minimi
 - Constrain variables to physically reasonable ranges (e.g., wire length ± 20% of initial) to speed convergence.
 - Optimizing for SWR = 1.0 at a single frequency may result in a very narrow bandwidth. Use the Pareto optimizer to balance SWR with bandwidth.
 
+![Single-Objective Optimizer](Media/Optimizer.png)
+
 ### 8.3 Multi-Objective (Pareto) Optimizer
 
 The Pareto optimizer finds the set of *non-dominated* solutions — the trade-off frontier between two competing objectives.
@@ -584,6 +614,8 @@ The Pareto optimizer finds the set of *non-dominated* solutions — the trade-of
 - Click a point to load that design into the main wire editor
 
 **Practical use:** Use the Pareto optimizer to explore the trade-off between gain and SWR — you might discover that accepting SWR = 1.4 instead of SWR = 1.1 buys you 1.5 dB of additional gain.
+
+![Multi-Objective Pareto Optimizer](Media/Pareto.png)
 
 ### 8.4 Transient Analysis
 
@@ -605,6 +637,8 @@ The computation applies an inverse FFT to the frequency-domain MoM results acros
 
 **Practical use:** Identify ringing, standing-wave echoes on feed cables, and group delay across the operating band.
 
+![Transient Analysis](Media/Transient.png)
+
 ### 8.5 Convergence Analysis
 
 The convergence checker runs the same simulation repeatedly with increasing segment density and reports how the results stabilize.
@@ -621,6 +655,8 @@ The convergence checker runs the same simulation repeatedly with increasing segm
 - A green marker at the recommended minimum segment count (where changes drop below 1%)
 
 **Rule of thumb:** For most HF dipoles, 10 segments per wire is sufficient. For antennas with current singularities (loaded shorts, feeds near junctions), 20+ segments improve accuracy.
+
+![Convergence Analysis](Media/Convergence.png)
 
 ---
 

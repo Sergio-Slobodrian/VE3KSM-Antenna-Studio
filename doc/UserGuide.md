@@ -16,7 +16,7 @@
    - 4.2 [Building a Wire Geometry by Hand](#42-building-a-wire-geometry-by-hand)
    - 4.3 [Using the 3D Wire Editor](#43-using-the-3d-wire-editor)
    - 4.4 [Setting the Voltage Source](#44-setting-the-voltage-source)
-   - 4.5 [Configuring the Ground Plane](#45-configuring-the-ground-plane)
+   - 4.5 [Configuring the Ground Plane](#45-configuring-the-ground-plane) *(incl. Moisture Preset & Region Map)*
    - 4.6 [Adding Lumped Loads](#46-adding-lumped-loads)
    - 4.7 [Adding Transmission-Line Elements](#47-adding-transmission-line-elements)
    - 4.8 [Choosing a Conductor Material](#48-choosing-a-conductor-material)
@@ -251,6 +251,32 @@ In the **Ground Config** section:
 | Sea water | 80 | 4.000 |
 
 For antennas above real ground, the **Complex-Image Method** is used automatically to model near-field interactions between the antenna and the ground surface.
+
+**Soil Moisture Preset** (Real ground only): the **Moisture** dropdown pre-fills εᵣ and σ from standard ARRL/ITU-R P.527 soil categories. Picking a preset writes the values into the εᵣ/σ fields, which remain editable afterwards — the preset label stays as a reminder. Choosing **Custom** (default) leaves εᵣ/σ exactly as you typed them.
+
+| Preset | εᵣ | σ (S/m) |
+|---|---|---|
+| Custom *(default)* | — | — |
+| Very dry | 3 | 0.001 |
+| Dry | 5 | 0.002 |
+| Average | 13 | 0.005 |
+| Moist | 20 | 0.010 |
+| Wet | 30 | 0.020 |
+| Very wet | 40 | 0.050 |
+| Salt marsh | 30 | 1.0 |
+| Sea water | 80 | 5.0 |
+
+**Ground Region Map** (Real ground only): click **Pick on map…** to open an interactive world-map modal. The map shows ITU-R P.832 conductivity zones colour-coded by class; click any region to apply its εᵣ/σ values and attach a zone label to the Ground Config header.
+
+To refine coverage with a custom area:
+1. Switch to **Draw** mode in the toolbar.
+2. Click to place polygon vertices; a rubber-band preview follows the cursor.
+3. Press **Enter** to close the polygon (or **Escape** to cancel).
+4. Name the region and enter εᵣ/σ in the inline form; click **Save**.
+
+User-drawn polygons are saved in browser `localStorage` and survive page reloads. When regions overlap, the smallest containing polygon wins — your custom areas naturally override the base ITU zones.
+
+Use **↓ Export** to download your polygon set as a JSON file, and **↑ Import** to load it in another browser. Importing always assigns new IDs so the same file can be imported twice without silent overwrites.
 
 ### 4.6 Adding Lumped Loads
 
@@ -629,6 +655,14 @@ NEC-2 is the most widely used antenna simulation file format. Antenna Studio can
 
 **Supported NEC-2 cards on import:** CM, CE (comments), GW (wire), GS (scale), GE (ground end), GN (ground), EX (excitation), LD (load), TL (transmission line), FR (frequency), EN (end).
 
+**Coated-wire export:** When any wire has a dielectric coating or the Weather Panel is active, the exporter collapses the dielectric stack into a single effective wire radius using the lossless approximation:
+
+```
+ln(a_eff) = ln(a) + Σ (1 − 1/εᵣᵢ) · ln(bᵢ / bᵢ₋₁)
+```
+
+A CM comment card in the deck documents the original coating parameters and computed `a_eff`. If any coating has `tanδ > 0` (all weather presets other than Dry fall into this category), the resistive loading portion cannot be expressed in standard NEC-2 format; the file downloads successfully but a yellow **warning banner** appears noting that the resistive contribution was dropped. NEC-2 tools will see a slightly optimistic efficiency for lossy-coated designs.
+
 ---
 
 ## 10. Validation and Warnings
@@ -644,6 +678,10 @@ Antenna Studio validates your design before submission and reports non-blocking 
 | Open-ended feed | Feed segment is at the very end of a wire instead of an interior segment. | Move the source to a middle segment of the driven wire. |
 | Overlapping wires | Two wires share the same start or end coordinates without a shared junction. | Snap endpoints together or delete the duplicate. |
 | No source defined | No voltage source has been placed. | Set a wire and segment in the Source Config section. |
+| Negative coating thickness | A wire's Coat-t value is below zero. | Enter a non-negative thickness (0 = bare wire). |
+| Coating εᵣ < 1 | Relative permittivity below 1 is non-physical when a coating is present. | Use εᵣ ≥ 1, or set Coat-t to 0 to disable the coating. |
+| Coated radius exceeds thin-wire limit | The outer radius (wire + coating + weather film) approaches half the segment length, violating the thin-wire kernel assumption. | Reduce the coating thickness, increase the segment count, or enlarge the wire radius. |
+| Negative loss tangent | tanδ must be ≥ 0 (passive material). | Enter a non-negative value for the coating or weather tanδ. |
 
 Warnings do not prevent simulation — click **Simulate** anyway to proceed. Errors (shown in red) do prevent simulation until resolved.
 

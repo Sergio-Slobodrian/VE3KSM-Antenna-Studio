@@ -94,7 +94,9 @@ make test         # cd backend && go test ./...
 
 - **MoM solver** — MPIE formulation, triangle/sinusoidal/quadratic basis
   functions, LU and GMRES solvers, automatic dispatch
-- **Ground models** — free space, PEC, real lossy ground, complex-image method
+- **Ground models** — free space, PEC, real lossy ground, complex-image method;
+  soil moisture presets (Very dry → Sea water) and interactive world-map
+  ground-region picker (ITU-R P.832 conductivity zones) with user-drawn polygons
 - **Wire geometry** — arbitrary 3D structures, interactive 3D editor,
   per-wire conductor material with skin-effect loss
 - **Dielectric coatings** — per-wire insulation (PVC, PE, PTFE, enamel, …)
@@ -116,7 +118,9 @@ make test         # cd backend && go test ./...
   NSGA-II Pareto optimizer, transient analysis, convergence checker
 - **Near-field** — E/H field on user-defined observation grid
 - **Polarization** — Stokes-parameter ellipse decomposition
-- **NEC-2** import and export for cross-tool compatibility
+- **NEC-2** import and export for cross-tool compatibility; coated-wire designs
+  use an effective-radius approximation on export, with a warning banner when
+  lossy coatings cannot be represented exactly
 - **Save / Load** — JSON design files; CSV sweep export
 
 ## Antenna Templates

@@ -42,6 +42,8 @@ and visualize 3D radiation patterns, SWR curves, and impedance plots.
 - **Node.js** 18+ with **npm** — required *only* to run `npm install` once
   so the Go bundler can find React et al.  Not used at runtime.
 
+See [Installation Guide](doc/INSTALL.md) for WSL setup and full build instructions (includes automation scripts for Windows users).
+
 ## Quick Start
 
 ```bash

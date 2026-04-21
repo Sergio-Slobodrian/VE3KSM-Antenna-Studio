@@ -126,6 +126,10 @@ export interface GroundConfig {
   permittivity: number;
   moisturePreset: SoilMoisturePreset;
   regionPreset: string;
+  /** Near-field kernel for real ground.
+   *  'image'      — Bannister complex-image method (fast, default).
+   *  'sommerfeld' — Full Sommerfeld integration (rigorous for h < λ/10). */
+  method: 'image' | 'sommerfeld';
 }
 
 /** Soil moisture preset for the real-ground model.

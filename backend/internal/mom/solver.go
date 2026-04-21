@@ -202,11 +202,18 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 			AddGenGroundBasis(Z, genBases, k, omega)
 		} else {
 			imageSegs := ApplyPerfectGround(allSegments)
-			// Use the complex-image method for Z-matrix assembly — it
-			// is significantly more accurate than simple Fresnel reflection
-			// for wires near the ground plane (Bannister 1986).
-			addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
-				input.Ground.Conductivity, input.Ground.Permittivity)
+			if input.Ground.Method == "sommerfeld" {
+				// Full Sommerfeld integration: rigorous for wires within λ/10
+				// of ground.  Slower (~10–30×) but captures the complete
+				// spatial spectrum including evanescent near-field coupling.
+				ClearSommerfeldCache()
+				addSommerfeldGroundBasis(Z, bases, allSegments, k, omega,
+					input.Ground.Conductivity, input.Ground.Permittivity)
+			} else {
+				// Default: Bannister complex-image method (fast, accurate for h > λ/10).
+				addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
+					input.Ground.Conductivity, input.Ground.Permittivity)
+			}
 		}
 	}
 

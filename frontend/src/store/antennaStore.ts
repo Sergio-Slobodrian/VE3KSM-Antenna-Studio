@@ -162,6 +162,7 @@ export const useAntennaStore = create<AntennaState>((set) => ({
     permittivity: 13,
     moisturePreset: 'custom',
     regionPreset: '',
+    method: 'image' as const,
   },
   frequency: {
     mode: 'single',

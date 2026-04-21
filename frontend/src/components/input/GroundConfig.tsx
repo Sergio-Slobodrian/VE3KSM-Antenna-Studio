@@ -158,6 +158,19 @@ const GroundConfig: React.FC = () => {
               step={0.1}
             />
           </div>
+          <div className="config-row">
+            <label>Ground model</label>
+            <select
+              value={ground.method ?? 'image'}
+              onChange={(e) =>
+                setGround({ method: e.target.value as GroundConfigType['method'] })
+              }
+              title="Reflection-coefficient image: fast Bannister approximation. Full Sommerfeld: rigorous for wires within λ/10 of ground (~10–30× slower)."
+            >
+              <option value="image">Reflection-coefficient image</option>
+              <option value="sommerfeld">Full Sommerfeld (rigorous)</option>
+            </select>
+          </div>
         </>
       )}
       <RegionMapPicker

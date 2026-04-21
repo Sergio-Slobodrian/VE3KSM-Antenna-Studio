@@ -124,11 +124,15 @@ type WeatherConfig struct {
 // Type selects the ground model: "free_space" (no ground), "perfect" (PEC
 // image theory), or "real" (lossy ground via Fresnel reflection coefficients).
 type GroundConfig struct {
-	Type           string  `json:"type"`                      // "free_space", "perfect", "real"
-	Conductivity   float64 `json:"conductivity"`              // ground conductivity in S/m (only for "real")
-	Permittivity   float64 `json:"permittivity"`              // relative permittivity (only for "real")
-	MoisturePreset string  `json:"moisture_preset,omitempty"` // label only ("custom" or soil category); εr/σ remain authoritative
-	RegionPreset   string  `json:"region_preset,omitempty"`   // label only (e.g. "itu:3", "user:<uuid>"); εr/σ remain authoritative
+	Type           string  `json:"type"`                        // "free_space", "perfect", "real"
+	Conductivity   float64 `json:"conductivity"`                // ground conductivity in S/m (only for "real")
+	Permittivity   float64 `json:"permittivity"`                // relative permittivity (only for "real")
+	MoisturePreset string  `json:"moisture_preset,omitempty"`   // label only ("custom" or soil category); εr/σ remain authoritative
+	RegionPreset   string  `json:"region_preset,omitempty"`     // label only (e.g. "itu:3", "user:<uuid>"); εr/σ remain authoritative
+	// Method selects the near-field ground kernel for real ground:
+	//   "" or "image" — Bannister complex-image method (fast, default)
+	//   "sommerfeld"  — full Sommerfeld integration (rigorous for h < λ/10)
+	Method string `json:"ground_method,omitempty"`
 }
 
 // Source describes the voltage excitation applied to the antenna.

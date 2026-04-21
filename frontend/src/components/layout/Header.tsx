@@ -200,6 +200,9 @@ const Header: React.FC = () => {
             type: ((data.ground.type as string) || 'free_space') as 'free_space' | 'perfect' | 'real',
             conductivity: (data.ground.conductivity as number) || 0.005,
             permittivity: (data.ground.permittivity as number) || 13,
+            moisturePreset: ((data.ground.moisture_preset as string) || 'custom') as GroundConfig['moisturePreset'],
+            regionPreset: (data.ground.region_preset as string) || '',
+            method: ((data.ground.ground_method as string) || 'image') as GroundConfig['method'],
           },
         });
         // Restore loads

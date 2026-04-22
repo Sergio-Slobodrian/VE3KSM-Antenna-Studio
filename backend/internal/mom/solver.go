@@ -141,13 +141,19 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 		}
 	}
 
+	// ---- Step 2c: Cross-wire junction basis functions ----
+	wireEndCrossJunction, wireStartCrossJunction := addCrossWireJunctions(
+		&bases, input.Wires, allSegments, wireSegOffsets, wireSegCounts,
+		wireEndJunction, wireStartJunction,
+	)
+
 	nBasis := len(bases)
 	if nBasis == 0 {
 		return nil, fmt.Errorf("no basis functions (need at least 3 segments per wire)")
 	}
 
 	// ---- Step 3: Determine which basis function receives the voltage source ----
-	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets, wireStartJunction, wireEndJunction)
+	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets, wireStartJunction, wireEndJunction, wireEndCrossJunction, wireStartCrossJunction)
 	if err != nil {
 		return nil, err
 	}
@@ -496,6 +502,10 @@ func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFiel
 			})
 		}
 	}
+	nfEndCrossJunction, nfStartCrossJunction := addCrossWireJunctions(
+		&bases, input.Wires, allSegments, wireSegOffsets, wireSegCounts,
+		wireEndJunction, wireStartJunction,
+	)
 	nBasis := len(bases)
 	if nBasis == 0 {
 		return nil, fmt.Errorf("no basis functions")
@@ -552,7 +562,7 @@ func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFiel
 	}
 	feedBasis, err := resolveFeedBasis(input.Source, input.Wires,
 		wireSegOffsets, wireSegCounts, wireBasisOffsets,
-		wireStartJunction, wireEndJunction)
+		wireStartJunction, wireEndJunction, nfEndCrossJunction, nfStartCrossJunction)
 	if err != nil {
 		return nil, err
 	}
@@ -697,6 +707,87 @@ func interpolateSegmentCurrents(basisCurrents []complex128, bases []TriangleBasi
 	return segI
 }
 
+// distPt returns the Euclidean distance between two 3-D points.
+func distPt(x1, y1, z1, x2, y2, z2 float64) float64 {
+	dx, dy, dz := x2-x1, y2-y1, z2-z1
+	return math.Sqrt(dx*dx + dy*dy + dz*dz)
+}
+
+// addCrossWireJunctions scans all wire endpoint pairs for coincident end-to-start
+// connections and appends cross-wire triangle basis functions to *bases.  It
+// returns wireEndCross[wi] and wireStartCross[wi]: the global basis index of the
+// junction involving wire wi's end or start, or -1 if none.
+//
+// Only end-to-start junctions (wire i's X2/Y2/Z2 == wire j's X1/Y1/Z1) are
+// handled.  Endpoints already occupied by a z=0 ground-plane junction are
+// skipped.  This enables multi-wire connected structures such as inverted-V
+// dipoles and full-wave loops.
+func addCrossWireJunctions(
+	bases *[]TriangleBasis,
+	wires []Wire,
+	allSegments []Segment,
+	wireSegOffsets, wireSegCounts []int,
+	wireEndJunction, wireStartJunction []bool,
+) (wireEndCross, wireStartCross []int) {
+	const junctionTol = 1e-6 // metres
+	wireEndCross = make([]int, len(wires))
+	wireStartCross = make([]int, len(wires))
+	for k := range wireEndCross {
+		wireEndCross[k] = -1
+		wireStartCross[k] = -1
+	}
+	for i, wi := range wires {
+		for j, wj := range wires {
+			if j <= i {
+				continue
+			}
+			// End of wire i → start of wire j
+			if !wireEndJunction[i] && !wireStartJunction[j] &&
+				wireEndCross[i] < 0 && wireStartCross[j] < 0 {
+				if distPt(wi.X2, wi.Y2, wi.Z2, wj.X1, wj.Y1, wj.Z1) <= junctionTol {
+					eOff, eN := wireSegOffsets[i], wireSegCounts[i]
+					sOff := wireSegOffsets[j]
+					segL := &allSegments[eOff+eN-1]
+					segR := &allSegments[sOff]
+					idx := len(*bases)
+					*bases = append(*bases, TriangleBasis{
+						NodeIndex:       idx,
+						NodePos:         segL.End,
+						SegLeft:         segL,
+						SegRight:        segR,
+						ChargeDensLeft:  -1.0 / (2.0 * segL.HalfLength),
+						ChargeDensRight: 1.0 / (2.0 * segR.HalfLength),
+					})
+					wireEndCross[i] = idx
+					wireStartCross[j] = idx
+				}
+			}
+			// End of wire j → start of wire i
+			if !wireEndJunction[j] && !wireStartJunction[i] &&
+				wireEndCross[j] < 0 && wireStartCross[i] < 0 {
+				if distPt(wj.X2, wj.Y2, wj.Z2, wi.X1, wi.Y1, wi.Z1) <= junctionTol {
+					eOff, eN := wireSegOffsets[j], wireSegCounts[j]
+					sOff := wireSegOffsets[i]
+					segL := &allSegments[eOff+eN-1]
+					segR := &allSegments[sOff]
+					idx := len(*bases)
+					*bases = append(*bases, TriangleBasis{
+						NodeIndex:       idx,
+						NodePos:         segL.End,
+						SegLeft:         segL,
+						SegRight:        segR,
+						ChargeDensLeft:  -1.0 / (2.0 * segL.HalfLength),
+						ChargeDensRight: 1.0 / (2.0 * segR.HalfLength),
+					})
+					wireEndCross[j] = idx
+					wireStartCross[i] = idx
+				}
+			}
+		}
+	}
+	return wireEndCross, wireStartCross
+}
+
 // resolveFeedBasis converts user-specified wire/segment source indices into the
 // corresponding triangle basis function index in the global basis array.
 //
@@ -710,7 +801,7 @@ func interpolateSegmentCurrents(basisCurrents []complex128, bases []TriangleBasi
 // by +1 within the wire's basis array. When the feed is at SegmentIndex=0,
 // the junction basis (at the wire base) is selected, which is the physically
 // correct feed point for a base-fed monopole.
-func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []int, wireBasisOffsets []int, wireStartJunction, wireEndJunction []bool) (int, error) {
+func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []int, wireBasisOffsets []int, wireStartJunction, wireEndJunction []bool, wireEndCrossJunction, wireStartCrossJunction []int) (int, error) {
 	if src.WireIndex < 0 || src.WireIndex >= len(wires) {
 		return 0, fmt.Errorf("source wire_index %d out of range", src.WireIndex)
 	}
@@ -751,6 +842,16 @@ func resolveFeedBasis(src Source, wires []Wire, wireSegOffsets, wireSegCounts []
 		}
 		// End junction is at index nBases (after all interior bases + optional start junction)
 		return wireBasisOffsets[wi] + nBases, nil
+	}
+
+	// Special case: cross-wire junction at wire end (source at last segment).
+	if segIdx == nSeg-1 && wireEndCrossJunction != nil && wi < len(wireEndCrossJunction) && wireEndCrossJunction[wi] >= 0 {
+		return wireEndCrossJunction[wi], nil
+	}
+
+	// Special case: cross-wire junction at wire start (source at first segment, no ground junction).
+	if segIdx == 0 && !startJ && wireStartCrossJunction != nil && wi < len(wireStartCrossJunction) && wireStartCrossJunction[wi] >= 0 {
+		return wireStartCrossJunction[wi], nil
 	}
 
 	// Normal interior node mapping.

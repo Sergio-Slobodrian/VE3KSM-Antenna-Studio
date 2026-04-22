@@ -12,14 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/**
- * Dropdown that loads predefined antenna templates from the backend.
- *
- * On mount, fetches the template list via GET /api/templates.  When the user
- * selects a template, posts its default parameters to GET the generated
- * geometry, then loads it into the store (replacing all wires, source, ground).
- * The select resets to the placeholder after each selection.
- */
 import React, { useEffect, useState } from 'react';
 import { getTemplates, generateTemplate } from '@/api/client';
 import { useAntennaStore } from '@/store/antennaStore';
@@ -28,59 +20,100 @@ import type { Template } from '@/types';
 const TemplateSelector: React.FC = () => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [loading, setLoading] = useState(false);
-  const { loadTemplate, setError } = useAntennaStore();
+  const [pending, setPending] = useState<{ name: string; freqMhz: number } | null>(null);
+  const { loadTemplate, setFrequency, setError } = useAntennaStore();
 
   useEffect(() => {
     getTemplates()
       .then(setTemplates)
-      .catch(() => {
-        // Templates endpoint may not be available
-      });
+      .catch(() => {});
   }, []);
 
-  const handleSelect = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+  const handleSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const name = e.target.value;
     if (!name) return;
+    const tmpl = templates.find((t) => t.name === name);
+    if (!tmpl) return;
+    const freqParam = tmpl.parameters.find((p) => p.name === 'frequency_mhz');
+    setPending({ name, freqMhz: freqParam ? freqParam.default : 146.0 });
+    e.target.value = '';
+  };
 
-    const template = templates.find((t) => t.name === name);
-    if (!template) return;
+  const handleLoad = async () => {
+    if (!pending) return;
+    const tmpl = templates.find((t) => t.name === pending.name);
+    if (!tmpl) return;
 
     const params: Record<string, number> = {};
-    template.parameters.forEach((p) => {
-      params[p.name] = p.default;
-    });
+    tmpl.parameters.forEach((p) => { params[p.name] = p.default; });
+    params['frequency_mhz'] = pending.freqMhz;
 
     setLoading(true);
     try {
-      const result = await generateTemplate(name, params);
+      const result = await generateTemplate(pending.name, params);
       loadTemplate(result);
+      setFrequency({ frequencyMhz: pending.freqMhz });
+      setPending(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Template generation failed');
     } finally {
       setLoading(false);
     }
-
-    e.target.value = '';
   };
 
   if (templates.length === 0) return null;
 
   return (
-    <select
-      className="template-selector"
-      onChange={handleSelect}
-      defaultValue=""
-      disabled={loading}
-    >
-      <option value="" disabled>
-        {loading ? 'Loading...' : 'Load Template'}
-      </option>
-      {templates.map((t) => (
-        <option key={t.name} value={t.name}>
-          {t.name}
+    <div className="template-selector-wrap">
+      <select
+        className="template-selector"
+        onChange={handleSelect}
+        defaultValue=""
+        disabled={loading || !!pending}
+      >
+        <option value="" disabled>
+          Load Template
         </option>
-      ))}
-    </select>
+        {templates.map((t) => (
+          <option key={t.name} value={t.name}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+
+      {pending && (
+        <div className="template-freq-prompt">
+          <span className="template-freq-label">
+            {pending.name} — target frequency
+          </span>
+          <input
+            type="number"
+            className="template-freq-input"
+            value={pending.freqMhz}
+            min={0.1}
+            step={0.1}
+            onChange={(e) =>
+              setPending({ ...pending, freqMhz: parseFloat(e.target.value) || pending.freqMhz })
+            }
+          />
+          <span className="template-freq-unit">MHz</span>
+          <button
+            className="template-freq-btn template-freq-btn--load"
+            onClick={handleLoad}
+            disabled={loading || !pending.freqMhz || pending.freqMhz <= 0}
+          >
+            {loading ? 'Loading…' : 'Load'}
+          </button>
+          <button
+            className="template-freq-btn template-freq-btn--cancel"
+            onClick={() => setPending(null)}
+            disabled={loading}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
   );
 };
 

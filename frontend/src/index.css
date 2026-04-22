@@ -558,6 +558,43 @@ select {
   min-width: 150px;
 }
 
+.template-freq-prompt {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+
+.template-freq-label {
+  font-size: 0.82em;
+  color: var(--accent);
+  flex: 1 1 100%;
+}
+
+.template-freq-input {
+  width: 80px;
+}
+
+.template-freq-unit {
+  font-size: 0.85em;
+  color: var(--fg-muted, #888);
+}
+
+.template-freq-btn {
+  padding: 2px 10px;
+  font-size: 0.85em;
+  cursor: pointer;
+}
+
+.template-freq-btn--cancel {
+  opacity: 0.7;
+}
+
 /* ========== Editor Container (3D) ========== */
 .editor-container {
   width: 100%;

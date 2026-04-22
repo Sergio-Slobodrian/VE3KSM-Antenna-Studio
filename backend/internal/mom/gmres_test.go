@@ -223,7 +223,7 @@ func TestGMRES_LargeSystemMatchesLU(t *testing.T) {
 	_ = lossPerBasis
 
 	noJunction := make([]bool, len(input.Wires))
-	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets, noJunction, noJunction)
+	feedBasis, err := resolveFeedBasis(input.Source, input.Wires, wireSegOffsets, wireSegCounts, wireBasisOffsets, noJunction, noJunction, nil, nil)
 	if err != nil {
 		t.Fatalf("resolveFeedBasis: %v", err)
 	}

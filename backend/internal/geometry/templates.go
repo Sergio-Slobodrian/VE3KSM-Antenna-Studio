@@ -290,6 +290,10 @@ func invertedVDipole() Template {
 			if segments < 1 {
 				segments = 21
 			}
+			// Odd segment count required so the apex end-segment is unambiguous
+			if segments%2 == 0 {
+				segments++
+			}
 
 			lambda := 300.0 / freqMHz
 			armLen := lambda / 4.0 // each arm is a quarter wavelength
@@ -301,15 +305,18 @@ func invertedVDipole() Template {
 			verticalDrop := armLen * math.Sin(angle)
 			endHeight := apexHeight - verticalDrop
 
+			// Wire 0 ENDS at the apex; wire 1 STARTS at the apex.
+			// addCrossWireJunctions detects end-to-start coincident endpoints,
+			// creating the cross-wire junction basis that connects the two arms.
 			return &TemplateResult{
 				Wires: []WireDTO{
-					// Left arm: apex to lower-left
+					// Left arm: tip → apex (apex is the END of wire 0)
 					{
-						X1: 0, Y1: 0, Z1: apexHeight,
-						X2: -horizontalDist, Y2: 0, Z2: endHeight,
+						X1: -horizontalDist, Y1: 0, Z1: endHeight,
+						X2: 0, Y2: 0, Z2: apexHeight,
 						Radius: defaultWireRadius, Segments: segments,
 					},
-					// Right arm: apex to lower-right
+					// Right arm: apex → tip (apex is the START of wire 1)
 					{
 						X1: 0, Y1: 0, Z1: apexHeight,
 						X2: horizontalDist, Y2: 0, Z2: endHeight,
@@ -318,7 +325,7 @@ func invertedVDipole() Template {
 				},
 				Source: SourceDTO{
 					WireIndex:    0,
-					SegmentIndex: 0, // fed at the apex junction
+					SegmentIndex: segments - 1, // last segment of wire 0 → apex junction basis
 					Voltage:      1.0,
 				},
 				Ground: GroundDTO{Type: "perfect"},

@@ -119,6 +119,7 @@ type GroundDTO struct {
 	Permittivity   float64 `json:"permittivity"`
 	MoisturePreset string  `json:"moisture_preset,omitempty"`
 	RegionPreset   string  `json:"region_preset,omitempty"`
+	Method         string  `json:"ground_method,omitempty"`
 }
 
 // SourceDTO identifies the excitation point on the antenna structure.

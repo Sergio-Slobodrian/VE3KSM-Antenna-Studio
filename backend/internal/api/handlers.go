@@ -587,6 +587,7 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 			Permittivity:   req.Ground.Permittivity,
 			MoisturePreset: req.Ground.MoisturePreset,
 			RegionPreset:   req.Ground.RegionPreset,
+			Method:         req.Ground.Method,
 		},
 		Source: mom.Source{
 			WireIndex:    req.Source.WireIndex,

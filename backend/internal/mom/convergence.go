@@ -67,13 +67,24 @@ func solverSegCount(requested int) int {
 // remapSegIndex scales a segment index from an old mesh to a new mesh,
 // preserving the physical position along the wire.
 //
-//	newIndex ≈ (oldIndex + 0.5) * newSeg / oldSeg
+// Wire endpoints are preserved exactly: index 0 maps to 0, and the last
+// index (oldSeg-1) maps to newSeg-1. Interior indices use the proportional
+// midpoint formula: newIndex ≈ (oldIndex + 0.5) * newSeg / oldSeg.
 //
-// This is exact for true doubling (newSeg = 2*oldSeg) and correct for any
-// other ratio, including when a cap prevents a full 2× increase.
+// Without the endpoint guards, sources/loads at segment 0 would be displaced
+// one segment away in the doubled mesh (because 0.5*M/N ≥ 1 when M ≈ 2N),
+// turning a mesh-refinement comparison into a feed-point-displacement
+// comparison and producing artificially large convergence deltas.
 func remapSegIndex(oldIndex, oldSeg, newSeg int) int {
 	if oldSeg <= 0 {
 		return 0
+	}
+	// Preserve wire endpoints so boundary-fed antennas compare consistently.
+	if oldIndex <= 0 {
+		return 0
+	}
+	if oldIndex >= oldSeg-1 {
+		return newSeg - 1
 	}
 	idx := int((float64(oldIndex)+0.5)*float64(newSeg)/float64(oldSeg))
 	if idx >= newSeg {

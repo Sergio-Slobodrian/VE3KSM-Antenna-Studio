@@ -521,8 +521,9 @@ After a simulation, go to the **Matching** tab to synthesize a lumped-element ne
 **Steps:**
 
 1. The antenna's simulated impedance Z_ant = R + jX is filled in automatically from the last single-frequency result.
-2. Set the **System impedance** (default 50 Ω) and **frequency** (MHz).
-3. Choose a **Topology**:
+2. Set the **System impedance** (default 50 Ω) and **Q (π / T)** factor.
+3. Optionally change the **Design at** frequency. By default it matches the simulation frequency; enter a different value to target an off-resonance operating frequency — the tool will run a background simulation at that frequency and report the antenna's actual Z and SWR there before designing the network. A **Reset** button restores it to the simulation frequency.
+4. Choose a **Topology**:
 
 | Topology | Best for |
 |---|---|
@@ -533,18 +534,19 @@ After a simulation, go to the **Matching** tab to synthesize a lumped-element ne
 | **Beta-match (hairpin)** | Simple Yagi or loop matching without galvanic connection |
 | **Toroidal transformer** | Wideband balun/unun; isolation between feed and antenna |
 
-4. Click **Calculate**. The tool displays:
+5. The tool displays for each topology:
    - Exact component values (L in µH, C in pF, R in Ω)
    - Nearest **E12 standard** component values
    - Network Q-factor and estimated 3 dB bandwidth
-   - ASCII schematic of the network
+   - SVG schematic of the network
 
-5. For the **Toroidal transformer**, additional outputs include: turns ratio, recommended core (from T-37 through FT-240 ferrite / iron-powder selection chart), and primary/secondary turns count.
+6. For the **Toroidal transformer**, additional outputs include: turns ratio, recommended core (from T-37 through FT-240 ferrite / iron-powder selection chart), and primary/secondary turns count.
 
 **Tips:**
 - The L-network solver returns two solutions (low-pass and high-pass). The LP solution (capacitor across source) is typical for HF use.
 - Use the Pi-network when you need to set the operating Q independently of the impedance ratio.
 - For an X ≠ 0 load, the tool adds a series compensation reactance as part of the design.
+- The **Design at** frequency input is particularly useful when an antenna is physically resonant on one band but you want to operate it on a nearby frequency with an ATU. Enter the operating frequency, and the tool designs the exact network the tuner must present.
 
 ![Impedance Matching Networks](Media/Matching.png)
 

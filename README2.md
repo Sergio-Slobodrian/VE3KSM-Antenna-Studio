@@ -180,7 +180,8 @@ All templates accept frequency as the primary parameter and auto-scale all dimen
 - **Beta-match (hairpin match)** — series transmission-line section matching
 - **Toroidal transformer** — turns ratio calculation with core selection from T-37 through T-106 iron-powder and FT-series ferrite cores
 - All topologies display exact component values AND nearest E12 standard values
-- ASCII / SVG schematic rendering in the UI
+- SVG schematic rendering in the UI
+- **Off-resonance targeting** — "Design at" frequency input lets you specify an operating frequency independent of the antenna's resonant frequency; the tool runs a background simulation at the target frequency, reports Z_ant and SWR there, then synthesizes the matching network for that impedance
 
 ---
 

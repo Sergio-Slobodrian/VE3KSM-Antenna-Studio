@@ -889,6 +889,41 @@ select {
   width: 64px;
   margin-left: 6px;
 }
+.match-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.match-freq-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.match-freq-input {
+  width: 90px;
+}
+.match-reset-btn {
+  background: none;
+  border: 1px solid #555;
+  border-radius: 4px;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 7px;
+}
+.match-reset-btn:hover {
+  border-color: #aaa;
+  color: #eee;
+}
+.match-antenna-z {
+  background: #1a1a2e;
+  border-left: 3px solid #4a9eff;
+  border-radius: 3px;
+  font-size: 12px;
+  margin-bottom: 10px;
+  padding: 5px 10px;
+}
 .match-solutions {
   display: flex;
   flex-direction: column;

@@ -21,10 +21,18 @@
  * β).  Each candidate shows its component list plus any rejection
  * notes.  A small Q-factor input controls the π / T narrow-band
  * designs.
+ *
+ * The "Design at" frequency input lets the user target a frequency
+ * different from the simulation frequency.  When the target differs,
+ * a background simulation is run at that frequency to obtain Z_ant,
+ * then the matching network is designed for that impedance.
  */
 import React, { useEffect, useState } from 'react';
 import { useAntennaStore } from '@/store/antennaStore';
-import { designMatch, type MatchResult, type MatchSolution, type MatchComponent } from '@/api/client';
+import {
+  designMatch, buildSimulateRequest, simulate,
+  type MatchResult, type MatchSolution, type MatchComponent,
+} from '@/api/client';
 import MatchSchematic from './MatchSchematic';
 import { formatImpedance } from '@/utils/conversions';
 
@@ -57,6 +65,15 @@ const formatComponentValue = (c: MatchComponent): string => {
   if (c.kind === 'R') return `${c.value.toFixed(2)} Ω`;
   return c.value.toString();
 };
+
+/** Compute SWR from complex impedance and reference Z0. */
+function computeSWR(r: number, x: number, z0: number): number {
+  const denom = Math.sqrt((r + z0) ** 2 + x ** 2);
+  if (denom < 1e-30) return 999;
+  const gamma = Math.sqrt((r - z0) ** 2 + x ** 2) / denom;
+  if (gamma >= 1) return 999;
+  return (1 + gamma) / (1 - gamma);
+}
 
 const ComponentRow: React.FC<{ c: MatchComponent }> = ({ c }) => (
   <tr>
@@ -126,41 +143,75 @@ const SolutionCard: React.FC<{ s: MatchSolution }> = ({ s }) => {
 };
 
 const MatchingNetwork: React.FC = () => {
-  const { simulationResult, referenceImpedance, frequency } = useAntennaStore();
+  const {
+    simulationResult, referenceImpedance, frequency,
+    wires, source, loads, transmissionLines, ground, weather,
+  } = useAntennaStore();
+
   const [qFactor, setQFactor] = useState(10);
+  const [targetFreqMHz, setTargetFreqMHz] = useState(() => frequency.frequencyMhz);
+  const [targetImpedance, setTargetImpedance] = useState<{ r: number; x: number } | null>(null);
   const [result, setResult] = useState<MatchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const r = simulationResult?.impedance.r;
-  const x = simulationResult?.impedance.x;
-  const freqMHz = frequency.frequencyMhz;
   const z0 = referenceImpedance;
+  const simFreqMHz = frequency.frequencyMhz;
 
   useEffect(() => {
-    if (r === undefined || x === undefined || freqMHz <= 0) {
+    if (!simulationResult || targetFreqMHz <= 0) {
       setResult(null);
+      setTargetImpedance(null);
       return;
     }
+
     let cancelled = false;
     setLoading(true);
     setError(null);
-    designMatch({ loadR: r, loadX: x, sourceZ0: z0, freqMHz, qFactor })
-      .then((res) => {
-        if (!cancelled) {
-          setResult(res);
-          setLoading(false);
-        }
-      })
-      .catch((err: unknown) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : String(err));
-          setResult(null);
-          setLoading(false);
-        }
-      });
+
+    const runMatch = (r: number, x: number) =>
+      designMatch({ loadR: r, loadX: x, sourceZ0: z0, freqMHz: targetFreqMHz, qFactor })
+        .then((res) => {
+          if (!cancelled) {
+            setTargetImpedance({ r, x });
+            setResult(res);
+            setLoading(false);
+          }
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : String(err));
+            setResult(null);
+            setLoading(false);
+          }
+        });
+
+    if (Math.abs(targetFreqMHz - simFreqMHz) < 1e-6) {
+      // Target matches simulation frequency — use cached impedance directly.
+      const { r, x } = simulationResult.impedance;
+      runMatch(r, x);
+    } else {
+      // Target differs — background simulate at the target frequency to get Z_ant.
+      const req = buildSimulateRequest(
+        wires, source, loads, transmissionLines, ground,
+        { ...frequency, frequencyMhz: targetFreqMHz },
+        referenceImpedance, weather,
+      );
+      simulate(req)
+        .then((res) => runMatch(res.impedance.r, res.impedance.x))
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : String(err));
+            setResult(null);
+            setLoading(false);
+          }
+        });
+    }
+
     return () => { cancelled = true; };
-  }, [r, x, z0, freqMHz, qFactor]);
+  }, [simulationResult, targetFreqMHz, simFreqMHz, z0, qFactor,
+      wires, source, loads, transmissionLines, ground, weather,
+      referenceImpedance, frequency]);
 
   if (!simulationResult) {
     return (
@@ -170,12 +221,40 @@ const MatchingNetwork: React.FC = () => {
     );
   }
 
+  const isOffFreq = Math.abs(targetFreqMHz - simFreqMHz) >= 1e-6;
+  const antSWR = targetImpedance
+    ? computeSWR(targetImpedance.r, targetImpedance.x, z0)
+    : null;
+
   return (
     <div className="match-panel">
       <div className="match-header">
-        <div>
-          <strong>Match {formatImpedance(r ?? 0, x ?? 0)} → {z0.toFixed(0)} Ω</strong>
-          <span className="muted small" style={{ marginLeft: 8 }}>at {freqMHz.toFixed(3)} MHz</span>
+        <div className="match-header-left">
+          <label className="match-freq-label">
+            Design at:
+            <input
+              type="number"
+              className="match-freq-input"
+              min={0.1}
+              max={30000}
+              step={0.001}
+              value={targetFreqMHz}
+              onChange={(e) => {
+                const v = parseFloat(e.target.value);
+                if (v > 0) setTargetFreqMHz(v);
+              }}
+            />
+            MHz
+          </label>
+          {isOffFreq && (
+            <button
+              className="match-reset-btn"
+              onClick={() => setTargetFreqMHz(simFreqMHz)}
+              title="Reset to simulation frequency"
+            >
+              Reset to {simFreqMHz.toFixed(3)} MHz
+            </button>
+          )}
         </div>
         <label className="match-q">
           Q (π / T):
@@ -190,7 +269,22 @@ const MatchingNetwork: React.FC = () => {
         </label>
       </div>
 
-      {loading && <p className="muted">Designing...</p>}
+      {targetImpedance && (
+        <div className="match-antenna-z">
+          <span>
+            Antenna at {targetFreqMHz.toFixed(3)} MHz:{' '}
+            <strong>{formatImpedance(targetImpedance.r, targetImpedance.x)}</strong>
+          </span>
+          {antSWR !== null && (
+            <span className="muted small" style={{ marginLeft: 8 }}>
+              SWR {antSWR > 100 ? '>100' : antSWR.toFixed(1)}:1
+              {' '}→ matched to 1:1
+            </span>
+          )}
+        </div>
+      )}
+
+      {loading && <p className="muted">{isOffFreq ? 'Simulating at target frequency…' : 'Designing…'}</p>}
       {error && <p className="status-error">{error}</p>}
 
       {result && (

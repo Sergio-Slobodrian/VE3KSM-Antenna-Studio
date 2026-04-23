@@ -388,6 +388,25 @@ func applyParams(wires []Wire, vars []OptimVariable, params []float64) []Wire {
 			w.Radius = val
 		}
 	}
+	// Re-snap any wire endpoints that were coincident in the original geometry.
+	// Parameter mutations can drift shared apex/junction points apart, causing
+	// addCrossWireJunctions to miss them and the source basis to resolve wrong.
+	const snapTol = 1e-6 // must match addCrossWireJunctions tolerance
+	for i := range wires {
+		for j := range wires {
+			if j <= i {
+				continue
+			}
+			if distPt(wires[i].X2, wires[i].Y2, wires[i].Z2,
+				wires[j].X1, wires[j].Y1, wires[j].Z1) <= snapTol {
+				out[j].X1, out[j].Y1, out[j].Z1 = out[i].X2, out[i].Y2, out[i].Z2
+			}
+			if distPt(wires[j].X2, wires[j].Y2, wires[j].Z2,
+				wires[i].X1, wires[i].Y1, wires[i].Z1) <= snapTol {
+				out[i].X1, out[i].Y1, out[i].Z1 = out[j].X2, out[j].Y2, out[j].Z2
+			}
+		}
+	}
 	return out
 }
 

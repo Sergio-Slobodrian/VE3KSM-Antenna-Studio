@@ -300,6 +300,12 @@ func SimulateCMA(input SimulationInput) (*CMAResult, error) {
 			})
 		}
 	}
+	// Add cross-wire junction bases (same as Simulate) so the Z-matrix
+	// includes coupling across shared wire endpoints (e.g. inverted-V apex).
+	// Without these, R = Re(Z) is not positive-definite and Cholesky fails.
+	addCrossWireJunctions(&bases, input.Wires, allSegments,
+		wireSegOffsets, wireSegCounts,
+		wireEndJunction, wireStartJunction)
 	nBasis := len(bases)
 	if nBasis == 0 {
 		return nil, fmt.Errorf("no basis functions")

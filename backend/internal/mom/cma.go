@@ -82,43 +82,43 @@ func ComputeCMA(Z *mat.CDense, segments []Segment, bases []TriangleBasis,
 		}
 	}
 
-	// Step 2: Cholesky factorisation of R.
-	// R must be positive-definite (it represents radiation + ohmic loss power).
-	// If R is only semi-definite (e.g. a structure that barely radiates),
-	// add a tiny diagonal regularisation to make it positive-definite.
-	var chol mat.Cholesky
-	if ok := chol.Factorize(R); !ok {
-		// Regularise: add small fraction of the diagonal norm
-		diagNorm := 0.0
-		for i := 0; i < n; i++ {
-			diagNorm += R.At(i, i)
-		}
-		eps := 1e-10 * diagNorm / float64(n)
-		if eps < 1e-20 {
-			eps = 1e-20
-		}
-		for i := 0; i < n; i++ {
-			R.SetSym(i, i, R.At(i, i)+eps)
-		}
-		if ok := chol.Factorize(R); !ok {
-			return nil, fmt.Errorf("CMA: R-matrix Cholesky failed even after regularisation; R may not be positive-definite")
-		}
+	// Step 2: Form R^{-1/2} via eigendecomposition R = V D Vᵀ.
+	// Eigendecomposition is always numerically stable for a symmetric matrix,
+	// unlike Cholesky which requires strict positive-definiteness.  For an
+	// inverted-V over a PEC ground, the image-theory contributions to Re(Z)
+	// can push eigenvalues near zero or slightly negative (the cross-term
+	// between the junction basis's two segments has dirDotImage = −1), so
+	// Cholesky is not reliable here.  Clamping those eigenvalues to a small
+	// positive floor removes numerical artefacts without affecting the
+	// physically significant modes.
+	var eigR mat.EigenSym
+	if ok := eigR.Factorize(R, true); !ok {
+		return nil, fmt.Errorf("CMA: R-matrix eigendecomposition failed (NaN/Inf in Z?)")
+	}
+	eigVals := make([]float64, n)
+	eigR.Values(eigVals) // ascending order
+	var eigVecs mat.Dense
+	eigR.VectorsTo(&eigVecs)
+
+	maxEig := eigVals[n-1]
+	floor := 1e-10 * maxEig
+	if floor < 1e-30 {
+		floor = 1e-30
 	}
 
-	// Extract L from Cholesky: R = L · Lᵀ  where L is lower-triangular.
-	var L mat.TriDense
-	chol.LTo(&L)
-
-	// Step 3: Form M = L⁻¹ · X · L⁻ᵀ  (symmetric).
-	// First compute L⁻¹ by solving L · Y = I.
+	// ScaledV[:,k] = V[:,k] / sqrt(clamp(λ_k, floor))
+	ScaledV := mat.NewDense(n, n, nil)
+	for k := 0; k < n; k++ {
+		d := math.Sqrt(math.Max(eigVals[k], floor))
+		for i := 0; i < n; i++ {
+			ScaledV.Set(i, k, eigVecs.At(i, k)/d)
+		}
+	}
+	// Linv = R^{-1/2} = V D̃^{-1/2} Vᵀ  (symmetric)
 	Linv := mat.NewDense(n, n, nil)
-	eye := mat.NewDense(n, n, nil)
-	for i := 0; i < n; i++ {
-		eye.Set(i, i, 1.0)
-	}
-	if err := Linv.Solve(&L, eye); err != nil {
-		return nil, fmt.Errorf("CMA: failed to invert Cholesky factor L: %w", err)
-	}
+	Linv.Mul(ScaledV, eigVecs.T())
+
+	// Step 3: Form M = Linv · X · Linvᵀ  (symmetric; Linv is symmetric so Linvᵀ = Linv).
 
 	// Xdense for multiplication
 	Xdense := mat.NewDense(n, n, nil)
@@ -130,11 +130,11 @@ func ComputeCMA(Z *mat.CDense, segments []Segment, bases []TriangleBasis,
 		}
 	}
 
-	// M = Linv · X · Linvᵀ
+	// M = Linv · X · Linvᵀ  (= R^{-1/2} X R^{-1/2})
 	var tmp mat.Dense
-	tmp.Mul(Linv, Xdense) // tmp = L⁻¹ · X
+	tmp.Mul(Linv, Xdense)
 	var Mdense mat.Dense
-	Mdense.Mul(&tmp, Linv.T()) // M = tmp · L⁻ᵀ
+	Mdense.Mul(&tmp, Linv.T())
 
 	// Symmetrise M explicitly (numerical noise can break strict symmetry)
 	Msym := mat.NewSymDense(n, nil)
@@ -301,8 +301,9 @@ func SimulateCMA(input SimulationInput) (*CMAResult, error) {
 		}
 	}
 	// Add cross-wire junction bases (same as Simulate) so the Z-matrix
-	// includes coupling across shared wire endpoints (e.g. inverted-V apex).
-	// Without these, R = Re(Z) is not positive-definite and Cholesky fails.
+	// correctly models current continuity at shared wire endpoints (e.g.
+	// inverted-V apex).  Without these the junction current is forced to zero
+	// and the physical model is wrong — independent of the CMA algorithm.
 	addCrossWireJunctions(&bases, input.Wires, allSegments,
 		wireSegOffsets, wireSegCounts,
 		wireEndJunction, wireStartJunction)

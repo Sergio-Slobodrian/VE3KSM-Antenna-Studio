@@ -141,6 +141,50 @@ func TestCMA_ResonantAngle(t *testing.T) {
 		mode1.Eigenvalue, mode1.ModalSignificance, mode1.CharacteristicAngle)
 }
 
+// TestCMA_InvertedV_PerfectGround verifies that CMA succeeds for an inverted-V
+// dipole over a perfect ground plane.  This is the regression test for the
+// Cholesky failure: the PEC image contributions push some R eigenvalues near
+// zero, so the algorithm must use eigendecomposition-based R^{-1/2} rather
+// than Cholesky.
+func TestCMA_InvertedV_PerfectGround(t *testing.T) {
+	const freqMHz = 7.1
+	freq := freqMHz * 1e6
+	lambda := C0 / freq
+	armLen := lambda / 4.0
+	angle := 30.0 * 3.14159265358979 / 180.0
+	apexHeight := 12.0
+	hDist := armLen * math.Cos(angle)
+	endHeight := apexHeight - armLen*math.Sin(angle)
+
+	input := SimulationInput{
+		Wires: []Wire{
+			// Wire 0: left tip → apex (apex is the END)
+			{X1: -hDist, Y1: 0, Z1: endHeight, X2: 0, Y2: 0, Z2: apexHeight, Radius: 0.001, Segments: 21},
+			// Wire 1: apex → right tip (apex is the START)
+			{X1: 0, Y1: 0, Z1: apexHeight, X2: hDist, Y2: 0, Z2: endHeight, Radius: 0.001, Segments: 21},
+		},
+		Frequency: freq,
+		Ground:    GroundConfig{Type: "perfect"},
+		Source:    Source{WireIndex: 0, SegmentIndex: 20, Voltage: 1 + 0i},
+	}
+
+	result, err := SimulateCMA(input)
+	if err != nil {
+		t.Fatalf("SimulateCMA failed for inverted-V over ground: %v", err)
+	}
+	if len(result.Modes) == 0 {
+		t.Fatal("expected at least one CMA mode")
+	}
+	// All MS values must be in [0,1]
+	for i, m := range result.Modes {
+		if m.ModalSignificance < 0 || m.ModalSignificance > 1.0+1e-10 {
+			t.Errorf("mode %d: MS=%f out of [0,1]", i+1, m.ModalSignificance)
+		}
+	}
+	t.Logf("Inverted-V CMA: %d modes, dominant MS=%.4f α=%.1f°",
+		len(result.Modes), result.Modes[0].ModalSignificance, result.Modes[0].CharacteristicAngle)
+}
+
 func safeMS(modes []CMAMode, idx int) float64 {
 	if idx < len(modes) {
 		return modes[idx].ModalSignificance

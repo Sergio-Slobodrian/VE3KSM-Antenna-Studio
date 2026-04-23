@@ -325,8 +325,14 @@ func SimulateCMA(input SimulationInput) (*CMAResult, error) {
 		addGroundTriangleBasis(Z, bases, allSegments, imageSegs, k, omega)
 	case "real":
 		imageSegs := ApplyPerfectGround(allSegments)
-		addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
-			input.Ground.Conductivity, input.Ground.Permittivity)
+		if input.Ground.Method == "sommerfeld" {
+			ClearSommerfeldCache()
+			addSommerfeldGroundBasis(Z, bases, allSegments, k, omega,
+				input.Ground.Conductivity, input.Ground.Permittivity)
+		} else {
+			addComplexImageGroundBasis(Z, bases, allSegments, imageSegs, k, omega,
+				input.Ground.Conductivity, input.Ground.Permittivity)
+		}
 	}
 
 	lossPerBasis := make([]float64, nBasis)

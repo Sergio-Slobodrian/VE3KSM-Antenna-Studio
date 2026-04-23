@@ -233,15 +233,292 @@ plus headline metrics (peak amplitude, peak time, ringdown time to
 
 ---
 
+## Month 3 — Ground accuracy and geometry depth
+
+### 18. Sommerfeld full integration — *Status: shipped*
+
+The infrastructure already exists (`mom/sommerfeld.go`, 32-point
+Gauss-Legendre with caching) but is not wired into the Z-matrix
+assembly pipeline — only the complex-image method is active.  Exposing
+it as a user-selectable "rigorous" ground mode gives accurate results
+for antennas within λ/10 of lossy ground: critical for verticals, 160m
+close-spaced dipoles, and any wire at low height over poor soil.  This
+is the primary NEC-4 ground-accuracy differentiator.
+
+- **Effort:** Low–Medium (2–3 days integration + NEC-4 benchmark
+  validation)
+- **Backend:** Wire `sommerfeld.go` into the `zmatrix.go`
+  mutual-impedance path when ground method = `"sommerfeld"`; plumb the
+  `method` selector through `SimulationInput` / request DTO.
+- **Frontend:** "Ground method" radio button (Complex-image /
+  Sommerfeld) in the ground configuration panel; advisory note when
+  antenna height > λ/5 (complex-image already accurate there).
+
+### 19. Tapered / stepped-radius wires — NEC-4 geometry
+
+NEC-4 allows each segment of a wire to carry a different radius,
+modelling tapered Yagi elements, flared feedpoint transitions, and
+end-loaded whips with realistic diameter profiles.  The current `Wire`
+struct holds a single `Radius` field; adding optional `RadiusStart` /
+`RadiusEnd` (linear taper) propagates through the Z-matrix kernel.
+Backward-compatible: omitting the new fields defaults to uniform radius.
+
+- **Effort:** Medium (3–5 days)
+- **Backend:** Extend `Wire` in `mom/types.go`; update per-segment
+  radius interpolation in `zmatrix.go` and `gen_kernel.go`.
+- **Frontend:** Wire editor gains radius-taper controls (single vs.
+  start+end); 3D viewport scales the wire tube per segment to reflect
+  the taper visually.
+
+### 20. ESA Q-factor and Chu–Harrington bandwidth bound
+
+No formal Q-factor computation exists.  Given that CMA already
+provides the eigendecomposition, computing the total radiation Q from
+the Harrington energy-field integral is mathematically straightforward.
+Output: modal Q per CMA mode, system Q at operating frequency,
+predicted 3 dB fractional bandwidth, and a comparison against the Chu
+limit `Q_Chu = 1/(ka)³ + 1/(ka)`.  Directly useful for 160m, 40m
+portable, and POTA backpack ESA designs.
+
+- **Effort:** Low (1–2 days)
+- **Backend:** New `mom/esa.go`; post-process the existing Z-matrix
+  and CMA eigenvalues; extend `SimulationResult` with `ESAMetrics`.
+- **Frontend:** "ESA / Q" metrics card added to the CMA viewer, with
+  the Chu limit overlaid on the modal-significance plot.
+
+### 21. Radial / mesh ground-plane geometry
+
+Vertical antennas over real ground depend critically on the buried or
+surface radial system.  An auto-generator for N radial wires at
+configurable length, angle, and height above ground (0 = buried
+approximation) lets users model 4-, 16-, 32-, and 64-radial systems
+without manually entering every wire.  A mesh-grid option covers
+elevated ground screens.
+
+- **Effort:** Medium (2–3 days backend, 1 day frontend)
+- **Backend:** New `geometry/radial.go` template generator emitting a
+  standard `Wire` slice — no solver changes required.
+- **Frontend:** "Ground radials" sub-panel in the geometry editor
+  with count, length (λ fractions), elevation, and wire properties;
+  radial wires rendered in a distinct colour in the 3D viewer.
+
+### 22. Expanded antenna template library
+
+Five templates (dipole, vertical, Yagi, inverted-V, loop) cover the
+basics.  Helical, LPDA, spiral, and collinear templates need only
+parametric geometry code — no solver changes.
+
+- **Effort:** Low (1 day per template, ~4 days total)
+- **Backend:** New cases in `geometry/templates.go`:
+  - **Helical** — axial-mode and normal-mode; parameters: diameter,
+    pitch, turns, design frequency.
+  - **Log-periodic dipole array (LPDA)** — tau, sigma, design
+    frequency; auto-calculates all element lengths and spacings.
+  - **Archimedes spiral** — polyline approximation; inner/outer radius,
+    turns, arm width.
+  - **Collinear / in-phase stack** — N dipoles on a vertical boom with
+    λ/2 phasing stubs modelled as TL elements.
+- **Frontend:** New entries in the template picker; preview renders in
+  the 3D viewer before insertion.
+
+---
+
+## Month 4+ — Advanced excitation and analysis
+
+### 23. Plane-wave excitation and radar cross-section (RCS)
+
+NEC-4 EX-card type 1 illuminates the structure with a uniform plane
+wave at arbitrary θ/φ incidence and polarisation.  The scattered field
+is the full MoM response minus the incident wave.  Unlocks: RCS
+(monostatic and bistatic), receiving pattern / effective aperture, noise
+temperature from sky-brightness maps, and interference modelling (tower
+proximity).
+
+- **Effort:** Medium (4–6 days)
+- **Backend:** New excitation vector in `mom/types.go`; plane-wave
+  current injection in `solver.go`; post-process scattered fields in
+  `farfield.go`; new `POST /api/rcs` endpoint.
+- **Frontend:** Excitation-type selector (voltage source / plane wave);
+  RCS result tab showing monostatic RCS vs. angle and peak RCS in dBsm.
+
+### 24. Multi-port / S-parameter analysis
+
+Extending to N ports enables: two-port S₁₁/S₂₁ measurement simulation,
+balun and hybrid coupler modelling, mutual-impedance matrix for phased
+arrays, and feed-network analysis.  The existing TL 2-port
+infrastructure is a foundation.
+
+- **Effort:** Medium–High (5–7 days)
+- **Backend:** `SimulationInput` gains a `Ports []Port` slice; solver
+  loops over excitations building a full Z-parameter matrix; convert to
+  S-parameters at user Z₀; extend Touchstone export to N-port .sNp.
+- **Frontend:** Multi-source editor; S-parameter result tab with
+  magnitude/phase vs. frequency per port pair.
+
+### 25. Multi-layer stratified ground model
+
+NEC-4 supports a second ground layer at user-specified depth with
+independent σ and εr, capturing coastal sites (sand over seawater),
+rock substrates, permafrost, and high-conductivity subsoil.  Extends
+the Fresnel path in `ground_real.go` with a recursive Wait / King
+two-layer impedance transfer matrix.
+
+- **Effort:** Medium (3–5 days)
+- **Backend:** Extend `Ground` struct with optional `Layer2Sigma`,
+  `Layer2EpsR`, `Layer2Depth`; recursive impedance transfer in
+  `ground_real.go`.
+- **Frontend:** Second layer input fields in the ground panel; depth
+  slider in λ fractions; preset table (sand, rock, permafrost, urban
+  fill).
+
+### 26. Buried wire / underground conductor model — NEC-4 SOMNEC
+
+NEC-4's SOMNEC module models wires embedded in lossy ground via
+Sommerfeld integrals evaluated at complex depth.  Covers buried
+radials, underground feed cables, and Beverage antenna counterpoise.
+Prerequisite: item 18 (Sommerfeld in production).
+
+- **Effort:** High (7–10 days; prerequisite: item 18)
+- **Backend:** Extend `Wire` with `BuriedDepth float64`; route
+  buried-wire interactions through a new `ground_buried.go` kernel
+  evaluating Sommerfeld integrals with source below the interface;
+  adapt near-field for buried observation points.
+- **Frontend:** Per-wire "buried at depth" toggle + depth input; buried
+  wires rendered below the ground plane with a dash style in the 3D
+  viewer.
+
+### 27. WebSocket / SSE streaming for long-running jobs
+
+Optimization and Pareto runs can take minutes and today block a single
+HTTP request.  Server-Sent Events streaming delivers iteration-by-
+iteration convergence updates, intermediate best-point patterns, and
+live Pareto-front evolution.  The `ARCHITECTURE.md` already flags this
+as the planned long-job mechanism.
+
+- **Effort:** Medium (4–6 days)
+- **Backend:** Channel-based progress reporter wrapping `optimizer.go`
+  and `pareto.go`; new SSE endpoints `GET /api/optimize/stream` and
+  `GET /api/pareto/stream`; token-based job ID for reconnect.
+- **Frontend:** Replace blocking spinner with live convergence chart,
+  real-time best-parameter table, and streaming 3D pattern update every
+  N iterations.
+
+### 28. Group-delay and dispersion analysis
+
+The transient analysis computes the IFFT time-domain response but does
+not extract group delay `τ_g(f) = −dφ(H(f))/dω`.  Adding a group-delay
+curve, phase-linearity metric, and chirped / swept-FM excitation
+makes the tool useful for UWB antenna evaluation (FCC Part 15,
+IEEE 802.15.4a).
+
+- **Effort:** Low–Medium (2–3 days)
+- **Backend:** Phase-differentiation pass on the sweep transfer
+  function in `transient.go`; add chirped-Gaussian waveform option;
+  new `GroupDelayResult` fields.
+- **Frontend:** Group-delay sub-plot in the "Transient" tab; excitation
+  picker adds "chirp" with start/stop frequency controls.
+
+### 29. Near-field to far-field transformation (NFT)
+
+The near-field viewer shows E/H on a 2D grid but does not transform it
+to a far-field pattern.  An NFT using the Love equivalence principle
+(surface equivalence + spherical-mode expansion) enables: simulating
+anechoic-chamber near-field scans, cross-validating the MoM far-field
+against the Huygens-surface result, and future import of measured
+near-field data as an excitation.
+
+- **Effort:** Medium (4–6 days)
+- **Backend:** New `mom/nft.go` implementing equivalent-current
+  integration over the near-field grid using a spherical-harmonic
+  expansion; expose via `POST /api/nft`.
+- **Frontend:** "Transform to far-field" button in the near-field
+  viewer; result overlaid on the existing 3D pattern viewer for
+  side-by-side comparison.
+
+---
+
+## Strategic horizon
+
+### 30. Sensitivity analysis and tolerance-aware design
+
+The optimizer finds optima but does not quantify sensitivity to
+manufacturing tolerances.  A local gradient pass after optimization —
+perturbing each parameter by ±1 % and re-simulating — produces a
+ranked sensitivity table and a worst-case SWR / gain spread across a
+tolerance band.  Directly useful for deciding element-cutting precision.
+
+- **Effort:** Medium (3–4 days)
+- **Backend:** New `mom/sensitivity.go`; post-optimization perturbation
+  sweep; return `SensitivityResult` with per-variable partial
+  derivatives and worst-case metric ranges.
+- **Frontend:** "Sensitivity" sub-tab on the optimizer and Pareto
+  result views; bar chart of ranked sensitivities; tolerance slider for
+  worst-case spread.
+
+### 31. Concurrent geometry + matching-network co-optimization
+
+Physical dimensions and matching networks are currently optimized
+sequentially.  Exposing matching-network topology and component values
+as first-class optimizer variables alongside wire geometry allows the
+solver to find intrinsically well-matched designs — essential for ESA
+work where the matching network is part of the antenna system.
+
+- **Effort:** Medium–High (5–7 days)
+- **Backend:** Extend optimizer variable schema in `optimizer.go` /
+  `pareto.go` to include `MatchTopology` + per-component bounds; call
+  `match.Synthesize()` inside the inner evaluation loop; objective
+  function receives post-match SWR.
+- **Frontend:** Optimizer parameter editor gains a "Matching network"
+  section with topology selection and component bounds; Pareto viewer
+  can plot matched-SWR vs. gain trade-offs.
+
+### 32. Surface MoM with triangular-patch elements
+
+The single largest capability gap versus FEKO, CST, and AN-SOF.
+Rao-Wilton-Glisson (RWG) triangular basis functions alongside the
+existing wire bases enable planar radiators (microstrip patch arrays,
+slot antennas, reflector dishes, horn aperture equivalents) and hybrid
+wire+surface structures.  Full subsystem: new bases, new MPIE kernel,
+new Z-matrix assembly, new current visualisation, STL mesh import.
+
+- **Effort:** Very High (14–21 days)
+- **Backend:** New `mom/patch.go` with RWG basis definition and Green's
+  function evaluation; extend `zmatrix.go` for wire–patch and
+  patch–patch interactions; STL/OBJ mesh importer; extend `farfield.go`
+  for surface-current radiation integral.
+- **Frontend:** Surface mesh import (STL upload); per-face material
+  assignment; 3D viewer shows surface current density as a colour map;
+  new patch-array and reflector templates.
+
+### 33. Machine-learning surrogate accelerator
+
+A Gaussian-process (GP) or neural-network surrogate trained on MoM
+evaluation samples guides PSO/NSGA-II and calls the full solver only to
+validate promising candidates.  10–100× reduction in optimization
+wall-clock time; particularly impactful for Pareto runs that today
+require thousands of full MoM evaluations.
+
+- **Effort:** High (10–14 days; requires offline training pipeline)
+- **Backend:** New `mom/surrogate.go` wrapping a lightweight GP or ONNX
+  neural network; online active-learning loop calling MoM only when
+  surrogate uncertainty exceeds a threshold; model serialized to disk
+  for reuse across sessions.
+- **Frontend:** "Accelerated" toggle on optimizer / Pareto panels;
+  surrogate vs. MoM call ratio in the convergence chart; model accuracy
+  metrics displayed.
+
+---
+
 ## Polish (interleave throughout)
 
 - **Regression benchmarks** — pin the existing dipole test plus a
   DL6WU Yagi and a K1FO reference design against published NEC-2
   numbers.
 - **Coated-wire dielectric loading** — ε_r and shell thickness; a
-  3–5 % resonant-frequency shift on insulated HF wires.
+  3–5 % resonant-frequency shift on insulated HF wires.  *Shipped.*
 - **Environmental knobs** — rain / ice as a thin dielectric shell
-  or tan δ bump.
+  or tan δ bump.  *Shipped* (global weather-film model stacked on
+  per-wire coatings).
 - **Touchstone (.s1p) and CSV export** of sweep data — *shipped*.
   CSV: freq / R / X / |Z| / SWR / Γ / RL.  Touchstone v1.1 .s1p
   RI-format, Hz freq, configurable Z₀.
@@ -266,3 +543,15 @@ plus headline metrics (peak amplitude, peak time, ringdown time to
   <https://www.nature.com/articles/s41598-024-66515-x>
 - PSO/GA for antenna optimization:
   <https://www.sciencedirect.com/science/article/abs/pii/S2214785322008203>
+- NEC-2 / NEC-3 Method of Moments (Burke & Poggio, 1981):
+  NOSC Technical Document 116, Naval Ocean Systems Center
+- Sommerfeld ground integrals (Michalski & Mosig, 1997):
+  IEEE Trans. Antennas Propagat. 45(3):508–519
+- Chu limit and ESA Q-factor (Chu, 1948):
+  J. Appl. Phys. 19:1163–1175
+- Two-layer ground model (Wait, 1954):
+  Can. J. Phys. 32:571–579
+- RWG triangular basis functions for surface MoM (Rao, Wilton &
+  Glisson, 1982): IEEE Trans. Antennas Propagat. 30(3):409–418
+- LPDA design equations (Carrel, 1961):
+  IRE Trans. Antennas Propagat. AP-9(6):553–562

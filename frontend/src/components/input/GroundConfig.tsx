@@ -170,6 +170,11 @@ const GroundConfig: React.FC = () => {
               <option value="image">Reflection-coefficient image</option>
               <option value="sommerfeld">Full Sommerfeld (rigorous)</option>
             </select>
+            {(ground.method === 'sommerfeld') && (
+              <p className="config-hint">
+                Most useful when wires are within λ/10 of ground. Complex-image is accurate for heights &gt; λ/5 and runs 10–30× faster.
+              </p>
+            )}
           </div>
         </>
       )}

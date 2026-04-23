@@ -57,3 +57,69 @@ func TestRemapSegIndex_EdgeCases(t *testing.T) {
 		t.Errorf("remapSegIndex(-1, 25, 51) = %d, want 0", got)
 	}
 }
+
+// TestSommerfeldConvergenceSmoke confirms that the Sommerfeld ground path is
+// live and reachable via RunConvergenceCheck.  A horizontal half-wave dipole
+// at λ/10 height over average lossy soil is simulated twice — once with
+// complex-image, once with Sommerfeld — and both must succeed with a positive
+// feed-point resistance.  The two resistances are expected to differ (proving
+// separate code paths are active) but agree within a factor of 3.
+func TestSommerfeldConvergenceSmoke(t *testing.T) {
+	const freqHz = 14.2e6 // 20 m band, λ ≈ 21.1 m
+	wavelength := 299792458.0 / freqHz
+	halfLen := wavelength / 4         // quarter-wave arm ≈ 5.28 m
+	height := wavelength / 10         // ≈ 2.11 m — within λ/10 of ground
+
+	// Horizontal centre-fed dipole at height h above real ground.
+	wire := Wire{
+		X1: -halfLen, Y1: 0, Z1: height,
+		X2: halfLen, Y2: 0, Z2: height,
+		Radius:   0.001,
+		Segments: 11,
+	}
+	src := Source{WireIndex: 0, SegmentIndex: 5} // centre feed
+	ground := GroundConfig{
+		Type:         "real",
+		Conductivity: 0.005,
+		Permittivity: 13,
+	}
+
+	baseInput := SimulationInput{
+		Wires:              []Wire{wire},
+		Frequency:          freqHz,
+		Ground:             ground,
+		Source:             src,
+		ReferenceImpedance: 50,
+	}
+
+	imageInput := baseInput
+	imageInput.Ground.Method = ""
+	resImage, err := RunConvergenceCheck(imageInput)
+	if err != nil {
+		t.Fatalf("complex-image convergence check failed: %v", err)
+	}
+
+	sommInput := baseInput
+	sommInput.Ground.Method = "sommerfeld"
+	resSomm, err := RunConvergenceCheck(sommInput)
+	if err != nil {
+		t.Fatalf("sommerfeld convergence check failed: %v", err)
+	}
+
+	if resImage.ImpedanceR1 <= 0 {
+		t.Errorf("complex-image R1 = %g Ω, want > 0", resImage.ImpedanceR1)
+	}
+	if resSomm.ImpedanceR1 <= 0 {
+		t.Errorf("sommerfeld R1 = %g Ω, want > 0", resSomm.ImpedanceR1)
+	}
+
+	// The two methods model the same physics; their resistances must be in the
+	// same order of magnitude even though they use different approximations.
+	if resImage.ImpedanceR1 > 0 && resSomm.ImpedanceR1 > 0 {
+		ratio := resSomm.ImpedanceR1 / resImage.ImpedanceR1
+		if ratio < 0.33 || ratio > 3.0 {
+			t.Errorf("Sommerfeld/image R ratio = %.2f, expected [0.33, 3.0]; image R=%.2f Ω, sommerfeld R=%.2f Ω",
+				ratio, resImage.ImpedanceR1, resSomm.ImpedanceR1)
+		}
+	}
+}

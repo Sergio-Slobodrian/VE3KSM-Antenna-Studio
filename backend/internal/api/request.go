@@ -103,6 +103,12 @@ type WireDTO struct {
 	// Material name from mom.MaterialLibrary (e.g. "copper", "aluminum").
 	// Empty / omitted = perfect conductor (lossless).
 	Material string `json:"material,omitempty"`
+	// Optional linear taper. When both are > 0, each segment receives a
+	// radius linearly interpolated from RadiusStart at (X1,Y1,Z1) to
+	// RadiusEnd at (X2,Y2,Z2). Zero / omitted falls back to the uniform
+	// Radius above.
+	RadiusStart float64 `json:"radius_start,omitempty"`
+	RadiusEnd   float64 `json:"radius_end,omitempty"`
 	// Dielectric coating (IS-card model). Zero thickness or EpsR ≤ 1 = bare wire.
 	CoatingThickness float64 `json:"coating_thickness,omitempty"`
 	CoatingEpsR      float64 `json:"coating_eps_r,omitempty"`
@@ -310,13 +316,30 @@ func (r *SimulateRequest) Validate() error {
 		if w.Segments < 1 {
 			return fmt.Errorf("wire %d must have at least 1 segment, got %d", i, w.Segments)
 		}
+
+		// Taper validation.  The solver treats RadiusStart/RadiusEnd as
+		// a linear taper only when both are > 0; a single non-zero field
+		// would silently fall back to uniform Radius, which is almost
+		// certainly not what the caller intended — reject explicitly.
+		if (w.RadiusStart > 0) != (w.RadiusEnd > 0) {
+			return fmt.Errorf("wire %d: radius_start and radius_end must both be set (or both omitted); got start=%g end=%g", i, w.RadiusStart, w.RadiusEnd)
+		}
+		if w.RadiusStart < 0 || w.RadiusEnd < 0 {
+			return fmt.Errorf("wire %d: radius_start and radius_end must be non-negative, got start=%g end=%g", i, w.RadiusStart, w.RadiusEnd)
+		}
+
 		// Thin-wire approximation: the MoM solver assumes current flows along
 		// a filament; if the radius approaches the segment length, the kernel
 		// integrals become inaccurate and results are physically meaningless.
+		// For tapered wires the largest endpoint radius is the binding constraint.
 		segLen := length / float64(w.Segments)
-		if w.Radius > segLen/2 {
+		effR := w.Radius
+		if w.RadiusStart > 0 && w.RadiusEnd > 0 {
+			effR = math.Max(w.RadiusStart, w.RadiusEnd)
+		}
+		if effR > segLen/2 {
 			return fmt.Errorf("wire %d: radius (%e m) too large relative to segment length (%e m); thin-wire approximation requires radius << segment length",
-				i, w.Radius, segLen)
+				i, effR, segLen)
 		}
 
 		// Dielectric coating validation. The solver already skips degenerate
@@ -334,8 +357,9 @@ func (r *SimulateRequest) Validate() error {
 			}
 			// Same thin-wire argument as above: once the coated outer radius
 			// approaches the segment length the IS-card stamp sits on a kernel
-			// that no longer represents a filament of current.
-			coatedR := w.Radius + w.CoatingThickness
+			// that no longer represents a filament of current. Check at both
+			// endpoints independently for tapered wires.
+			coatedR := effR + w.CoatingThickness
 			if coatedR > segLen/2 {
 				return fmt.Errorf("wire %d: coated outer radius (%e m) too large relative to segment length (%e m); thin-wire kernel requires coated radius << segment length",
 					i, coatedR, segLen)

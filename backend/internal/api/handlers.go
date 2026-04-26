@@ -540,6 +540,8 @@ func simulateRequestToInput(req SimulateRequest) mom.SimulationInput {
 			Radius:   w.Radius,
 			Segments: w.Segments,
 			Material:         mom.MaterialName(w.Material),
+			RadiusStart:      w.RadiusStart,
+			RadiusEnd:        w.RadiusEnd,
 			CoatingThickness: w.CoatingThickness,
 			CoatingEpsR:      w.CoatingEpsR,
 			CoatingLossTan:   w.CoatingLossTan,

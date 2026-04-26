@@ -96,38 +96,40 @@ func applyCoatingLoading(zmat zMatSetter, wires []Wire, segments []Segment,
 	hasWeather := weather.Thickness > 0 && weatherEpsR >= 1
 
 	for wi, w := range wires {
-		a := w.Radius
-		if a <= 0 {
+		if w.Radius <= 0 && !w.isTapered() {
 			continue
 		}
 
-		// Build layer stack inner → outer.
-		var layers []dielectricLayer
-		curR := a
-
-		if w.CoatingThickness > 0 && w.CoatingEpsR > 1 {
-			curR = a + w.CoatingThickness
-			layers = append(layers, dielectricLayer{
-				EpsR:        w.CoatingEpsR,
-				LossTan:     w.CoatingLossTan,
-				OuterRadius: curR,
-			})
-		}
-		if hasWeather {
-			layers = append(layers, dielectricLayer{
-				EpsR:        weatherEpsR,
-				LossTan:     weatherLossTan,
-				OuterRadius: curR + weather.Thickness,
-			})
-		}
-
-		if len(layers) == 0 {
+		// Whether any layer at all is present is a per-wire property
+		// (coating thickness / εr and weather film don't vary per segment).
+		hasCoating := w.CoatingThickness > 0 && w.CoatingEpsR > 1
+		if !hasCoating && !hasWeather {
 			continue
 		}
 
-		zPerUnitLen := multilayerZPerUnitLen(a, layers, omega)
-		if cmplx.Abs(zPerUnitLen) == 0 {
-			continue
+		// zPerUnitLen depends on the inner conductor radius a, so for tapered
+		// wires we evaluate it inside the basis loop at each segment's own
+		// radius. buildLayers returns the (wire-wide) layer stack for a given
+		// inner radius a.
+		buildLayers := func(a float64) []dielectricLayer {
+			var layers []dielectricLayer
+			curR := a
+			if hasCoating {
+				curR = a + w.CoatingThickness
+				layers = append(layers, dielectricLayer{
+					EpsR:        w.CoatingEpsR,
+					LossTan:     w.CoatingLossTan,
+					OuterRadius: curR,
+				})
+			}
+			if hasWeather {
+				layers = append(layers, dielectricLayer{
+					EpsR:        weatherEpsR,
+					LossTan:     weatherLossTan,
+					OuterRadius: curR + weather.Thickness,
+				})
+			}
+			return layers
 		}
 
 		segOff := wireSegOffsets[wi]
@@ -139,7 +141,16 @@ func applyCoatingLoading(zmat zMatSetter, wires []Wire, segments []Segment,
 			seg2 := segments[segOff+k+1]
 			len1 := 2 * seg1.HalfLength
 			len2 := 2 * seg2.HalfLength
-			zBasis := 0.5*zPerUnitLen*complex(len1, 0) + 0.5*zPerUnitLen*complex(len2, 0)
+
+			// Evaluate the per-unit-length impedance at each segment's own
+			// conductor radius. When the wire is uniform both calls use the
+			// same radius and the result collapses to the pre-taper formula.
+			zPul1 := multilayerZPerUnitLen(seg1.Radius, buildLayers(seg1.Radius), omega)
+			zPul2 := multilayerZPerUnitLen(seg2.Radius, buildLayers(seg2.Radius), omega)
+			zBasis := 0.5*zPul1*complex(len1, 0) + 0.5*zPul2*complex(len2, 0)
+			if cmplx.Abs(zBasis) == 0 {
+				continue
+			}
 			bi := basisOff + k
 			zmat.Add(bi, bi, zBasis)
 			if lossPerBasis != nil && bi < len(lossPerBasis) {

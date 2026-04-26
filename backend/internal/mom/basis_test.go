@@ -188,7 +188,7 @@ func TestGenKernel_MatchesTriangleKernel(t *testing.T) {
 	k := omega / C0
 
 	// Create two simple segments
-	segs := SubdivideWire(0, 0, 0, -5, 0, 0, 5, 0.001, 5)
+	segs := SubdivideWire(0, 0, 0, -5, 0, 0, 5, 0.001, 0.001, 5)
 	for i := range segs {
 		segs[i].Index = i
 	}

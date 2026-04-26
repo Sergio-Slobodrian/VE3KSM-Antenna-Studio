@@ -119,9 +119,15 @@ func ValidateGeometry(wires []Wire, freqHz float64) []Warning {
 			})
 		}
 
-		// 2. Thin-wire kernel: segment length / radius
-		if w.Radius > 0 {
-			ratio := segLen / w.Radius
+		// 2. Thin-wire kernel: segment length / radius. For tapered wires,
+		// evaluate against the fattest segment (the endpoint with the larger
+		// radius) so we fire a single warning per wire instead of one per
+		// segment.
+		r1 := w.RadiusAtEndpoint1()
+		r2 := w.RadiusAtEndpoint2()
+		maxR := math.Max(r1, r2)
+		if maxR > 0 {
+			ratio := segLen / maxR
 			switch {
 			case ratio < 2:
 				ws = append(ws, Warning{
@@ -135,6 +141,22 @@ func ValidateGeometry(wires []Wire, freqHz float64) []Warning {
 					Code:      "kernel_marginal_radius",
 					Severity:  SeverityWarn,
 					Message:   fmt.Sprintf("segment_length / radius = %.2f < 8; thin-wire kernel becomes approximate.  Consider thinner wire or fewer segments", ratio),
+					WireIndex: wi,
+				})
+			}
+		}
+
+		// 2b. Taper-ratio check: a linear taper ratio > 10:1 pushes the
+		// thin-wire kernel (which is only first-order in radius change per
+		// segment) toward noticeable inaccuracy.  Kept to one advisory per wire.
+		if w.RadiusStart > 0 && w.RadiusEnd > 0 {
+			maxTR := math.Max(w.RadiusStart, w.RadiusEnd)
+			minTR := math.Min(w.RadiusStart, w.RadiusEnd)
+			if minTR > 0 && maxTR/minTR > 10 {
+				ws = append(ws, Warning{
+					Code:      "taper_ratio_high",
+					Severity:  SeverityWarn,
+					Message:   fmt.Sprintf("wire radius taper %.4f m → %.4f m (ratio %.1f×) exceeds 10:1; linear-taper accuracy in the thin-wire kernel is reduced.  Consider splitting into multiple wires", w.RadiusStart, w.RadiusEnd, maxTR/minTR),
 					WireIndex: wi,
 				})
 			}
@@ -182,15 +204,14 @@ func ValidateGeometry(wires []Wire, freqHz float64) []Warning {
 		}
 	}
 
-	// 4. Wires sharing an endpoint with mismatched radii.
+	// 4. Wires sharing an endpoint with mismatched radii. For tapered wires,
+	// the radius at the shared endpoint is what matters (not the midpoint /
+	// average), so resolve each wire's radius at the specific endpoint it
+	// contributes to the junction.
 	for i := range wires {
 		for j := i + 1; j < len(wires); j++ {
-			if !wiresShareEndpoint(wires[i], wires[j]) {
-				continue
-			}
-			ri := wires[i].Radius
-			rj := wires[j].Radius
-			if ri == 0 || rj == 0 {
+			ri, rj, ok := sharedEndpointRadii(wires[i], wires[j])
+			if !ok || ri == 0 || rj == 0 {
 				continue
 			}
 			ratio := math.Max(ri, rj) / math.Min(ri, rj)
@@ -224,27 +245,50 @@ func segmentLengthOf(w Wire) float64 {
 // one endpoint within a tolerance proportional to the smaller wire's
 // length (default 0.1 % of the shorter wire, or 1 µm absolute floor).
 func wiresShareEndpoint(a, b Wire) bool {
+	_, _, ok := sharedEndpointRadii(a, b)
+	return ok
+}
+
+// sharedEndpointRadii returns the radii of a and b evaluated at the first
+// shared endpoint found (ok=true). If no endpoints coincide within
+// tolerance, ok=false and the radii are zero.  For tapered wires the
+// returned radius is the endpoint-specific value (RadiusStart at endpoint
+// 1, RadiusEnd at endpoint 2); for uniform wires both resolve to Radius.
+func sharedEndpointRadii(a, b Wire) (rA, rB float64, ok bool) {
 	tol := 1e-6
 	la := segmentLengthOf(a) * float64(maxInt(a.Segments, 1))
 	lb := segmentLengthOf(b) * float64(maxInt(b.Segments, 1))
 	if l := math.Min(la, lb); l > 0 {
 		tol = math.Max(tol, l*1e-3)
 	}
-	pts := [][2][3]float64{
-		{{a.X1, a.Y1, a.Z1}, {b.X1, b.Y1, b.Z1}},
-		{{a.X1, a.Y1, a.Z1}, {b.X2, b.Y2, b.Z2}},
-		{{a.X2, a.Y2, a.Z2}, {b.X1, b.Y1, b.Z1}},
-		{{a.X2, a.Y2, a.Z2}, {b.X2, b.Y2, b.Z2}},
+	// Pair each candidate endpoint with the accessor that resolves to the
+	// correct tapered radius for that endpoint.
+	type candidate struct {
+		p     [3]float64
+		getRA func() float64
+		getRB func() float64
 	}
-	for _, pp := range pts {
-		dx := pp[0][0] - pp[1][0]
-		dy := pp[0][1] - pp[1][1]
-		dz := pp[0][2] - pp[1][2]
+	cands := []candidate{
+		{[3]float64{a.X1, a.Y1, a.Z1}, a.RadiusAtEndpoint1, b.RadiusAtEndpoint1},
+		{[3]float64{a.X1, a.Y1, a.Z1}, a.RadiusAtEndpoint1, b.RadiusAtEndpoint2},
+		{[3]float64{a.X2, a.Y2, a.Z2}, a.RadiusAtEndpoint2, b.RadiusAtEndpoint1},
+		{[3]float64{a.X2, a.Y2, a.Z2}, a.RadiusAtEndpoint2, b.RadiusAtEndpoint2},
+	}
+	bEndpoints := [4][3]float64{
+		{b.X1, b.Y1, b.Z1},
+		{b.X2, b.Y2, b.Z2},
+		{b.X1, b.Y1, b.Z1},
+		{b.X2, b.Y2, b.Z2},
+	}
+	for i, c := range cands {
+		dx := c.p[0] - bEndpoints[i][0]
+		dy := c.p[1] - bEndpoints[i][1]
+		dz := c.p[2] - bEndpoints[i][2]
 		if math.Sqrt(dx*dx+dy*dy+dz*dz) <= tol {
-			return true
+			return c.getRA(), c.getRB(), true
 		}
 	}
-	return false
+	return 0, 0, false
 }
 
 func maxInt(a, b int) int {

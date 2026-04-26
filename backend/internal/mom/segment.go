@@ -38,12 +38,15 @@ type Segment struct {
 // Parameters:
 //   - wireIndex: index of this wire in the input wire array
 //   - (x1,y1,z1), (x2,y2,z2): wire endpoints in Cartesian coordinates (m)
-//   - radius: wire cross-section radius (m)
+//   - radiusStart: wire radius at the (x1,y1,z1) endpoint (m)
+//   - radiusEnd:   wire radius at the (x2,y2,z2) endpoint (m). For a uniform
+//     wire, pass radiusStart == radiusEnd. For a linearly tapered wire each
+//     segment's Radius is interpolated at the segment center.
 //   - numSegments: number of subdivisions (clamped to minimum 1)
 //
 // Returns nil if the wire has zero length. The returned segments have local
 // indices (0..N-1); the caller is responsible for assigning global indices.
-func SubdivideWire(wireIndex int, x1, y1, z1, x2, y2, z2 float64, radius float64, numSegments int) []Segment {
+func SubdivideWire(wireIndex int, x1, y1, z1, x2, y2, z2, radiusStart, radiusEnd float64, numSegments int) []Segment {
 	if numSegments < 1 {
 		numSegments = 1
 	}
@@ -70,6 +73,11 @@ func SubdivideWire(wireIndex int, x1, y1, z1, x2, y2, z2 float64, radius float64
 		tStart := float64(i) / float64(numSegments)
 		tEnd := float64(i+1) / float64(numSegments)
 
+		// Linear radius interpolation at the segment center. When start==end
+		// this reduces to a bit-identical constant radius (same arithmetic as
+		// the pre-taper code path).
+		segRadius := radiusStart + tCenter*(radiusEnd-radiusStart)
+
 		segments[i] = Segment{
 			Index:     i,
 			WireIndex: wireIndex,
@@ -90,7 +98,7 @@ func SubdivideWire(wireIndex int, x1, y1, z1, x2, y2, z2 float64, radius float64
 			},
 			HalfLength: halfLen,
 			Direction:  dir,
-			Radius:     radius,
+			Radius:     segRadius,
 		}
 	}
 	return segments

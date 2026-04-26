@@ -146,8 +146,10 @@ func applyMaterialLoss(zmat zMatSetter, wires []Wire, segments []Segment,
 			len2 := 2 * seg2.HalfLength
 			// Distribute half of each adjacent segment's loss onto
 			// this basis: matches NEC-2's LD-card treatment.
-			lossR := 0.5*SegmentLossOhms(mat, freqHz, len1, w.Radius) +
-				0.5*SegmentLossOhms(mat, freqHz, len2, w.Radius)
+			// Each segment contributes half its loss to this basis, evaluated
+			// at its own radius so linearly tapered wires integrate correctly.
+			lossR := 0.5*SegmentLossOhms(mat, freqHz, len1, seg1.Radius) +
+				0.5*SegmentLossOhms(mat, freqHz, len2, seg2.Radius)
 			if lossR == 0 {
 				continue
 			}

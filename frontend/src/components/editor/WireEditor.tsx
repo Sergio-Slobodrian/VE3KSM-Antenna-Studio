@@ -179,8 +179,16 @@ const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick, onDragSt
     return { position: mid, quaternion: quat, length: len };
   }, [wire.x1, wire.y1, wire.z1, wire.x2, wire.y2, wire.z2]);
 
-  const displayRadius = Math.max(wire.radius * 50, 0.05);
-  const handleRadius = displayRadius * 2.5;
+  // Cylinder's local +Y is the endpoint-2 side (see quaternion setup above),
+  // so cylinderGeometry(radiusTop, radiusBottom, ...) uses rEnd at the top
+  // and rStart at the bottom when the wire is tapered.
+  const baseRadius = wire.radius;
+  const tapered = (wire.radiusStart ?? 0) > 0 && (wire.radiusEnd ?? 0) > 0;
+  const rStart = tapered ? (wire.radiusStart as number) : baseRadius;
+  const rEnd = tapered ? (wire.radiusEnd as number) : baseRadius;
+  const displayRadiusStart = Math.max(rStart * 50, 0.05);
+  const displayRadiusEnd = Math.max(rEnd * 50, 0.05);
+  const handleRadius = Math.max(displayRadiusStart, displayRadiusEnd) * 2.5;
 
   return (
     <group>
@@ -189,7 +197,7 @@ const WireMesh: React.FC<WireMeshProps> = ({ wire, isSelected, onClick, onDragSt
         quaternion={quaternion}
         onClick={(e) => { e.stopPropagation(); onClick(); }}
       >
-        <cylinderGeometry args={[displayRadius, displayRadius, length, 8]} />
+        <cylinderGeometry args={[displayRadiusEnd, displayRadiusStart, length, 8]} />
         <meshStandardMaterial
           color={isSelected ? '#ffdd00' : '#4488ff'}
           emissive={isSelected ? '#443300' : '#001133'}

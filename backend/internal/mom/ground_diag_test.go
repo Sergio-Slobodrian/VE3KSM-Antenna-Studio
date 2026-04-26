@@ -148,7 +148,7 @@ func TestDiag_ZMatrixScalarMagnitude(t *testing.T) {
 	}
 	numSeg := 21
 
-	segs := SubdivideWire(0, wire.X1, wire.Y1, wire.Z1, wire.X2, wire.Y2, wire.Z2, wire.Radius, numSeg)
+	segs := SubdivideWire(0, wire.X1, wire.Y1, wire.Z1, wire.X2, wire.Y2, wire.Z2, wire.Radius, wire.Radius, numSeg)
 	for j := range segs {
 		segs[j].Index = j
 	}
@@ -286,7 +286,7 @@ func TestDiag_FullZDiagonal(t *testing.T) {
 	}
 	numSeg := 21
 
-	segs := SubdivideWire(0, wire.X1, wire.Y1, wire.Z1, wire.X2, wire.Y2, wire.Z2, wire.Radius, numSeg)
+	segs := SubdivideWire(0, wire.X1, wire.Y1, wire.Z1, wire.X2, wire.Y2, wire.Z2, wire.Radius, wire.Radius, numSeg)
 	for j := range segs {
 		segs[j].Index = j
 	}
@@ -355,7 +355,7 @@ func TestDiag_ImageKernelConsistency(t *testing.T) {
 	k := omega / C0
 
 	// Create a simple 3-segment wire from z=1 to z=2.
-	segs := SubdivideWire(0, 0, 0, 1, 0, 0, 2, 0.001, 3)
+	segs := SubdivideWire(0, 0, 0, 1, 0, 0, 2, 0.001, 0.001, 3)
 	for j := range segs {
 		segs[j].Index = j
 	}

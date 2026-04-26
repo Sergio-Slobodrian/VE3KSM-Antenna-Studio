@@ -186,7 +186,7 @@ func TestGMRES_LargeSystemMatchesLU(t *testing.T) {
 			numSeg++
 		}
 		wireSegCounts[wi] = numSeg
-		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
+		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, w.Radius, numSeg)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
 		}

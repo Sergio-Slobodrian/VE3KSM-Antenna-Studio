@@ -71,6 +71,13 @@ func ToGeometry(f *File) (Geometry, error) {
 			}
 			g.Input.Wires = append(g.Input.Wires, w)
 			tagToIdx[tag] = len(g.Input.Wires) - 1
+		case "GC":
+			// NEC-2 taper card. We don't decode it: the wire is left with
+			// the uniform radius from its GW card. Surface a warning so
+			// the user knows fidelity was lost.
+			tag := c.FieldInt(0, 0)
+			g.IgnoredCards = append(g.IgnoredCards,
+				fmt.Sprintf("GC card ignored — wire tag %d treated as uniform (line %d)", tag, c.Line))
 		case "GE":
 			if c.FieldInt(0, 0) == 1 && groundType == "free_space" {
 				groundType = "perfect"

@@ -60,7 +60,8 @@ func Simulate(input SimulationInput) (*SolverResult, error) {
 			numSeg++ // odd count ensures a segment boundary at the wire midpoint for center feed
 		}
 		wireSegCounts[wi] = numSeg
-		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
+		rS, rE := w.taperRadii()
+		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, rS, rE, numSeg)
 		// Assign global indices (SubdivideWire uses local 0-based indices)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
@@ -449,7 +450,8 @@ func SimulateNearField(input SimulationInput, nfReq NearFieldRequest) (*NearFiel
 			numSeg++
 		}
 		wireSegCounts[wi] = numSeg
-		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
+		rS, rE := w.taperRadii()
+		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, rS, rE, numSeg)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
 		}

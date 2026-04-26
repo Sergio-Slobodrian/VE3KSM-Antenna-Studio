@@ -103,10 +103,55 @@ type Wire struct {
 	Radius   float64      `json:"radius"`             // wire radius (m)
 	Segments int          `json:"segments"`           // number of MoM segments for this wire
 	Material MaterialName `json:"material,omitempty"` // optional conductor material; "" = perfect conductor
+	// Optional linear taper. When both > 0, each segment gets a radius
+	// interpolated along the wire from (X1,Y1,Z1) to (X2,Y2,Z2). Either
+	// unset (0) falls back to the uniform Radius above.
+	RadiusStart float64 `json:"radius_start,omitempty"`
+	RadiusEnd   float64 `json:"radius_end,omitempty"`
 	// Dielectric coating (IS-card model). Zero thickness or EpsR ≤ 1 = bare wire.
 	CoatingThickness float64 `json:"coating_thickness,omitempty"` // coating outer shell thickness (m)
 	CoatingEpsR      float64 `json:"coating_eps_r,omitempty"`     // coating relative permittivity (εr)
 	CoatingLossTan   float64 `json:"coating_loss_tan,omitempty"`  // coating loss tangent (tanδ)
+}
+
+// isTapered reports whether both RadiusStart and RadiusEnd are set.
+func (w Wire) isTapered() bool {
+	return w.RadiusStart > 0 && w.RadiusEnd > 0
+}
+
+// RadiusAt returns the wire radius at parametric position s ∈ [0,1] along
+// the wire from (X1,Y1,Z1) to (X2,Y2,Z2). For uniform (non-tapered) wires
+// it returns Radius regardless of s.
+func (w Wire) RadiusAt(s float64) float64 {
+	if !w.isTapered() {
+		return w.Radius
+	}
+	return w.RadiusStart + s*(w.RadiusEnd-w.RadiusStart)
+}
+
+// RadiusAtEndpoint1 returns the wire radius at the (X1,Y1,Z1) endpoint.
+func (w Wire) RadiusAtEndpoint1() float64 {
+	if !w.isTapered() {
+		return w.Radius
+	}
+	return w.RadiusStart
+}
+
+// RadiusAtEndpoint2 returns the wire radius at the (X2,Y2,Z2) endpoint.
+func (w Wire) RadiusAtEndpoint2() float64 {
+	if !w.isTapered() {
+		return w.Radius
+	}
+	return w.RadiusEnd
+}
+
+// taperRadii returns the (start, end) radii to use when generating segments.
+// For uniform wires both values equal Radius.
+func (w Wire) taperRadii() (rStart, rEnd float64) {
+	if w.isTapered() {
+		return w.RadiusStart, w.RadiusEnd
+	}
+	return w.Radius, w.Radius
 }
 
 // WeatherConfig describes a global environmental film applied as an outer

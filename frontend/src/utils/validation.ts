@@ -37,6 +37,18 @@ export function validateWire(wire: Wire): string | null {
     return 'Wire radius seems too large (> 1 m)';
   }
 
+  // Taper: both must be set together.  Either unset falls back to `radius`.
+  const rS = wire.radiusStart ?? 0;
+  const rE = wire.radiusEnd ?? 0;
+  if ((rS > 0) !== (rE > 0)) {
+    return 'radiusStart and radiusEnd must both be set (or both left blank) for a tapered wire';
+  }
+  if (rS < 0 || rE < 0) {
+    return 'radiusStart / radiusEnd must be non-negative';
+  }
+  const tapered = rS > 0 && rE > 0;
+  const effRadius = tapered ? Math.max(rS, rE) : wire.radius;
+
   // Dielectric coating: mirror the backend checks so users see the error
   // inline instead of waiting for a simulate round-trip.
   if (wire.coatingThickness < 0) {
@@ -45,16 +57,19 @@ export function validateWire(wire: Wire): string | null {
   if (wire.coatingLossTan < 0) {
     return 'Coating loss tangent must be non-negative';
   }
+  const dx = wire.x2 - wire.x1;
+  const dy = wire.y2 - wire.y1;
+  const dz = wire.z2 - wire.z1;
+  const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const segLen = length / wire.segments;
+  if (effRadius > segLen / 2) {
+    return 'Wire radius is too large relative to segment length; thin-wire kernel becomes invalid';
+  }
   if (wire.coatingThickness > 0) {
     if (wire.coatingEpsR < 1) {
       return 'Coating εr must be ≥ 1 when coating thickness > 0';
     }
-    const dx = wire.x2 - wire.x1;
-    const dy = wire.y2 - wire.y1;
-    const dz = wire.z2 - wire.z1;
-    const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
-    const segLen = length / wire.segments;
-    const coatedRadius = wire.radius + wire.coatingThickness;
+    const coatedRadius = effRadius + wire.coatingThickness;
     if (coatedRadius > segLen / 2) {
       return 'Coated outer radius is too large for the segment length; thin-wire kernel becomes invalid';
     }

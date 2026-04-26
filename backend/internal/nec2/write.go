@@ -58,6 +58,14 @@ type WireRow struct {
 	Segments   int
 	Sigma      float64 // 0 = perfect / unspecified
 
+	// Optional linear taper.  When both are > 0, Write collapses the tapered
+	// wire to a single GW card with an effective radius of sqrt(rS*rE) and
+	// emits a CM comment + warning noting the flattening.  NEC-2 has no GC
+	// (taper) card, so splitting into per-segment GW cards would re-tag the
+	// wire and break LD / EX references.
+	RadiusStart float64
+	RadiusEnd   float64
+
 	// Dielectric coating fields from the MoM IS-card model. NEC-2 has no
 	// native equivalent, so Write collapses these into an effective radius
 	// (Tsai/Richmond lossless approximation) and preserves the originals as
@@ -196,13 +204,30 @@ func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) ([]string, 
 
 	for i, wire := range input.Wires {
 		tag := i + 1
-		radius := wire.Radius
+
+		// NEC-2 has no GC (taper) card.  Collapse a linearly tapered wire to
+		// a single GW by using the geometric mean radius sqrt(rS*rE), which
+		// matches the ln(a) thin-wire kernel better than the arithmetic mean
+		// (King's result for linearly tapered dipoles).
+		conductorRadius := wire.Radius
+		isTapered := wire.RadiusStart > 0 && wire.RadiusEnd > 0 && wire.RadiusStart != wire.RadiusEnd
+		if isTapered {
+			conductorRadius = math.Sqrt(wire.RadiusStart * wire.RadiusEnd)
+			fmt.Fprintf(&sb,
+				"CM wire %d tapered from r_start=%g m to r_end=%g m — exported as uniform a_eff=%g m (geometric mean)\n",
+				tag, wire.RadiusStart, wire.RadiusEnd, conductorRadius)
+			warnings = append(warnings,
+				fmt.Sprintf("Wire %d is linearly tapered (%.4g m → %.4g m); NEC-2 lacks a GC card so it has been flattened to a uniform GW with a_eff = %.4g m.",
+					tag, wire.RadiusStart, wire.RadiusEnd, conductorRadius))
+		}
+
+		radius := conductorRadius
 
 		// Build the concentric layer stack (inner → outer): wire coating
 		// first, weather film on top.  Empty ⇒ bare wire and we use the
 		// conductor radius unchanged.
 		var layers [][2]float64
-		curR := wire.Radius
+		curR := conductorRadius
 		if wire.CoatingThickness > 0 && wire.CoatingEpsR > 1 {
 			curR += wire.CoatingThickness
 			layers = append(layers, [2]float64{wire.CoatingEpsR, curR})
@@ -212,17 +237,17 @@ func Write(w io.Writer, input GeometryWriteInput, opts WriteOptions) ([]string, 
 		}
 
 		if len(layers) > 0 {
-			radius = effectiveRadius(wire.Radius, layers)
+			radius = effectiveRadius(conductorRadius, layers)
 			// One CM card per coated wire so the original physical
 			// parameters survive the round-trip as documentation.
 			if wire.CoatingThickness > 0 && wire.CoatingEpsR > 1 {
 				fmt.Fprintf(&sb,
 					"CM wire %d coating: thickness=%g m εr=%g tanδ=%g; a=%g m → a_eff=%g m\n",
 					tag, wire.CoatingThickness, wire.CoatingEpsR, wire.CoatingLossTan,
-					wire.Radius, radius)
+					conductorRadius, radius)
 			} else if hasWeather {
 				fmt.Fprintf(&sb, "CM wire %d weather film: a=%g m → a_eff=%g m\n",
-					tag, wire.Radius, radius)
+					tag, conductorRadius, radius)
 			}
 		}
 

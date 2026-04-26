@@ -74,15 +74,25 @@ interface SweepRequest {
 
 /** Strip the client-side `id` field from wires and forward material + coating. */
 function buildWires(wires: Wire[]) {
-  return wires.map((w) => ({
-    x1: w.x1, y1: w.y1, z1: w.z1,
-    x2: w.x2, y2: w.y2, z2: w.z2,
-    radius: w.radius, segments: w.segments,
-    material: w.material || undefined,
-    coating_thickness: w.coatingThickness || undefined,
-    coating_eps_r: w.coatingThickness > 0 && w.coatingEpsR > 1 ? w.coatingEpsR : undefined,
-    coating_loss_tan: w.coatingThickness > 0 && w.coatingLossTan > 0 ? w.coatingLossTan : undefined,
-  }));
+  return wires.map((w) => {
+    // Only forward taper fields when both are set and actually differ from
+    // the uniform radius — keeps the JSON payload clean for standard wires.
+    const tapered =
+      (w.radiusStart ?? 0) > 0 &&
+      (w.radiusEnd ?? 0) > 0 &&
+      w.radiusStart !== w.radiusEnd;
+    return {
+      x1: w.x1, y1: w.y1, z1: w.z1,
+      x2: w.x2, y2: w.y2, z2: w.z2,
+      radius: w.radius, segments: w.segments,
+      material: w.material || undefined,
+      radius_start: tapered ? w.radiusStart : undefined,
+      radius_end: tapered ? w.radiusEnd : undefined,
+      coating_thickness: w.coatingThickness || undefined,
+      coating_eps_r: w.coatingThickness > 0 && w.coatingEpsR > 1 ? w.coatingEpsR : undefined,
+      coating_loss_tan: w.coatingThickness > 0 && w.coatingLossTan > 0 ? w.coatingLossTan : undefined,
+    };
+  });
 }
 
 /** Convert camelCase Source to snake_case for the backend. */

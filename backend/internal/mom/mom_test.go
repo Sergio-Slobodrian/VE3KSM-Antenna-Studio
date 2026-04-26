@@ -495,7 +495,7 @@ func TestApplyPerfectGroundDiagonal(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestSubdivideWireOneSegment(t *testing.T) {
-	segs := SubdivideWire(0, 0, 0, 0, 0, 0, 1, 0.001, 1)
+	segs := SubdivideWire(0, 0, 0, 0, 0, 0, 1, 0.001, 0.001, 1)
 	if len(segs) != 1 {
 		t.Fatalf("Expected 1 segment, got %d", len(segs))
 	}
@@ -508,7 +508,7 @@ func TestSubdivideWireOneSegment(t *testing.T) {
 }
 
 func TestSubdivideWireZeroLength(t *testing.T) {
-	segs := SubdivideWire(0, 5, 5, 5, 5, 5, 5, 0.001, 10)
+	segs := SubdivideWire(0, 5, 5, 5, 5, 5, 5, 0.001, 0.001, 10)
 	if segs != nil {
 		t.Errorf("Zero-length wire should return nil, got %d segments", len(segs))
 	}
@@ -516,7 +516,7 @@ func TestSubdivideWireZeroLength(t *testing.T) {
 
 func TestSubdivideWireDirectionsAreUnitVectors(t *testing.T) {
 	// Diagonal wire
-	segs := SubdivideWire(0, 1, 2, 3, 4, 6, 3, 0.001, 7)
+	segs := SubdivideWire(0, 1, 2, 3, 4, 6, 3, 0.001, 0.001, 7)
 	if segs == nil {
 		t.Fatal("SubdivideWire returned nil for non-zero-length wire")
 	}
@@ -534,7 +534,7 @@ func TestSubdivideWireLengthsSum(t *testing.T) {
 	x1, y1, z1 := 1.0, 2.0, 3.0
 	x2, y2, z2 := 4.0, 6.0, 8.0
 	n := 13
-	segs := SubdivideWire(0, x1, y1, z1, x2, y2, z2, 0.001, n)
+	segs := SubdivideWire(0, x1, y1, z1, x2, y2, z2, 0.001, 0.001, n)
 	if len(segs) != n {
 		t.Fatalf("Expected %d segments, got %d", n, len(segs))
 	}
@@ -556,7 +556,7 @@ func TestSubdivideWireLengthsSum(t *testing.T) {
 
 func TestSubdivideWireSegmentsContinuous(t *testing.T) {
 	// Verify that segment i's End matches segment i+1's Start
-	segs := SubdivideWire(0, 0, 0, 0, 1, 1, 1, 0.001, 5)
+	segs := SubdivideWire(0, 0, 0, 0, 1, 1, 1, 0.001, 0.001, 5)
 	for i := 0; i < len(segs)-1; i++ {
 		for d := 0; d < 3; d++ {
 			if math.Abs(segs[i].End[d]-segs[i+1].Start[d]) > 1e-10 {

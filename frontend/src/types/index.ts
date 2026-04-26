@@ -59,6 +59,11 @@ export interface Wire {
   radius: number;
   segments: number;
   material: Material;
+  /** Optional linear taper endpoints. When both > 0, each segment's radius
+   *  is linearly interpolated from `radiusStart` at (x1,y1,z1) to
+   *  `radiusEnd` at (x2,y2,z2).  Either unset (0) falls back to `radius`. */
+  radiusStart?: number;
+  radiusEnd?: number;
   /** Dielectric coating (IS-card model). Zero or omitted = bare wire. */
   coatingThickness: number; // outer shell thickness (m); 0 = bare
   coatingEpsR: number;      // relative permittivity εr; ≤1 = bare

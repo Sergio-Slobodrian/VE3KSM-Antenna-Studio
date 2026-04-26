@@ -119,7 +119,7 @@ func TestGaussLegendre(t *testing.T) {
 }
 
 func TestSubdivideWire(t *testing.T) {
-	segs := SubdivideWire(0, 0, 0, 0, 0, 0, 1.0, 0.001, 10)
+	segs := SubdivideWire(0, 0, 0, 0, 0, 0, 1.0, 0.001, 0.001, 10)
 	if len(segs) != 10 {
 		t.Fatalf("Expected 10 segments, got %d", len(segs))
 	}

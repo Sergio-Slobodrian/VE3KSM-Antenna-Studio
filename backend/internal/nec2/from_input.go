@@ -44,6 +44,8 @@ func FromInput(in mom.SimulationInput) GeometryWriteInput {
 			X1: w.X1, Y1: w.Y1, Z1: w.Z1,
 			X2: w.X2, Y2: w.Y2, Z2: w.Z2,
 			Radius: w.Radius, Segments: w.Segments,
+			RadiusStart:      w.RadiusStart,
+			RadiusEnd:        w.RadiusEnd,
 			CoatingThickness: w.CoatingThickness,
 			CoatingEpsR:      w.CoatingEpsR,
 			CoatingLossTan:   w.CoatingLossTan,

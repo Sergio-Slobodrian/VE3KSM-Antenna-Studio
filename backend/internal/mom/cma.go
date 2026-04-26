@@ -247,7 +247,8 @@ func SimulateCMA(input SimulationInput) (*CMAResult, error) {
 			numSeg++
 		}
 		wireSegCounts[wi] = numSeg
-		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, w.Radius, numSeg)
+		rS, rE := w.taperRadii()
+		segs := SubdivideWire(wi, w.X1, w.Y1, w.Z1, w.X2, w.Y2, w.Z2, rS, rE, numSeg)
 		for j := range segs {
 			segs[j].Index = len(allSegments) + j
 		}
